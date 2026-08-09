@@ -1,0 +1,77 @@
+---
+title: "Authentication and API keys"
+description: "Authenticate merchant API requests with environment-bound bearer API keys."
+keywords: ["bearer authentication", "API keys", "key rotation", "Transika"]
+icon: "key-round"
+---
+
+Transika's merchant API accepts secret API keys as bearer tokens.
+
+## Send a bearer token
+
+Include your key in the `Authorization` header on every API request:
+
+```http
+Authorization: Bearer txk_test_REPLACE_ME
+```
+
+```bash
+curl "https://sbx-institutional.tran-sika.com/sandbox/v1/transactions" \
+  --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
+  --header "Accept: application/json"
+```
+
+<Warning>
+  Never place a secret key in browser code, mobile application bundles, logs, screenshots, support tickets, or source control. Call Transika from a trusted server.
+</Warning>
+
+## Key environments
+
+The prefix identifies the key's environment and must match the request path.
+
+| Key prefix | Environment | Request prefix |
+| --- | --- | --- |
+| `txk_test_` | Sandbox | `/sandbox/v1` |
+| `txk_live_` | Live | `/v1` |
+
+A mismatched key and path returns `400`. The request path, not an environment header, selects the environment.
+
+## Create and manage keys
+
+API key management requires an authenticated merchant dashboard session and the `api_access` entitlement:
+
+- `POST /v1/api-keys` creates a key.
+- `GET /v1/api-keys` lists key metadata.
+- `DELETE /v1/api-keys/{id}` revokes a key.
+
+The create response displays the full secret once. Copy it to your secret manager immediately; it cannot be retrieved later.
+
+<Tip>
+  Give each integration and deployment its own key. This limits the impact of rotation and makes usage easier to audit.
+</Tip>
+
+## Rotate a key
+
+<Steps>
+  <Step title="Create a replacement">
+    Create a key in the same environment with the minimum required scope.
+  </Step>
+  <Step title="Deploy the replacement">
+    Update your secret manager and verify requests with the new key.
+  </Step>
+  <Step title="Revoke the old key">
+    Remove the previous key after all instances have switched.
+  </Step>
+</Steps>
+
+Revocation is immediate. Transika cannot recover a lost secret; create a replacement instead.
+
+## Authentication failures
+
+| Status | Typical cause |
+| --- | --- |
+| `400` | The key prefix does not match the live or sandbox path. |
+| `401` | The bearer token is missing, malformed, invalid, expired, or revoked. |
+| `403` | The key lacks a required scope, KYB is not approved, or a feature is not entitled. |
+
+See [Response envelopes and errors](/getting-started/responses-and-errors) for the error body format.

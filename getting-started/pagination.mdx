@@ -1,0 +1,70 @@
+---
+title: "Pagination"
+description: "Page through Transika merchant resources with consistent query parameters."
+keywords: ["pagination", "page", "limit", "list endpoints"]
+icon: "list-filter"
+---
+
+List endpoints use page-based pagination. Request one page at a time and preserve any endpoint-specific filters across requests.
+
+## Query parameters
+
+<ParamField query="page" default="1" type="integer">
+  One-based page number. Values below `1` resolve to the first page.
+</ParamField>
+
+<ParamField query="limit" default="20" type="integer">
+  Number of records to return. Transika clamps the value to the range `1` through `100`.
+</ParamField>
+
+Some endpoints also accept filters such as `q`, `status`, `customerId`, or an endpoint-specific type. Consult the API reference before sending a filter.
+
+## Request a page
+
+```bash
+curl "https://sbx-institutional.tran-sika.com/sandbox/v1/transactions?page=1&limit=50" \
+  --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
+  --header "Accept: application/json"
+```
+
+Paginated metadata is returned inside the endpoint-specific `data` payload. Treat the OpenAPI schema for that endpoint as authoritative for field names.
+
+## Iterate safely
+
+```javascript
+async function* listPages(path) {
+  const limit = 100;
+
+  for (let page = 1; ; page += 1) {
+    const url = new URL(
+      `https://sbx-institutional.tran-sika.com/sandbox/v1${path}`,
+    );
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(limit));
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.TRANSIKA_API_KEY}`,
+      },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message);
+
+    yield body.data;
+
+    const records = body.data.items ?? body.data.data ?? [];
+    if (records.length < limit) break;
+  }
+}
+```
+
+<Note>
+  The exact collection and metadata fields vary by resource. Adapt iteration to the response schema shown for the endpoint instead of assuming the fallback names in this example.
+</Note>
+
+## Consistency considerations
+
+- Apply a stable filter set to every page request.
+- Deduplicate by resource ID if records can change while you paginate.
+- Start a fresh traversal when reconciling a complete data set.
+- Use webhooks for ongoing state changes instead of repeatedly scanning all pages.

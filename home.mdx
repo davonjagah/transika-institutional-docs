@@ -1,0 +1,51 @@
+---
+title: "Transika developer documentation"
+description: "Integrate Transika's merchant API for Ghana beneficiaries, OTC trades, managed tGHS balances, payouts, and webhooks."
+icon: "house"
+---
+
+Use the Transika Merchant API to exchange supported stablecoins and Ghana cedis, hold a managed GHS treasury balance, and pay Ghana mobile money or bank beneficiaries.
+
+<Columns cols={2}>
+  <Card title="Make your first request" icon="rocket" href="/getting-started/quickstart">
+    Authenticate and call a safe sandbox endpoint.
+  </Card>
+
+  <Card title="Understand authentication" icon="key-round" href="/getting-started/authentication">
+    Learn how bearer keys and environments work.
+  </Card>
+
+  <Card title="Choose an environment" icon="server" href="/getting-started/environments">
+    Keep sandbox and live data separate.
+  </Card>
+
+  <Card title="Handle API responses" icon="braces" href="/getting-started/responses-and-errors">
+    Parse the common envelope and errors.
+  </Card>
+</Columns>
+
+## What you can build
+
+- Maintain Ghana mobile money and bank beneficiaries.
+- Request, accept, and fund OTC trades.
+- Settle eligible trades into a managed tGHS balance.
+- Pay Ghana beneficiaries from your tGHS balance.
+- Reconcile treasury activity.
+- Receive signed OTC lifecycle webhooks.
+
+## Integration model
+
+<Steps>
+  <Step title="Complete merchant verification">
+    Obtain approved KYB and product access.
+  </Step>
+  <Step title="Start in sandbox">
+    Create a test key and use `/sandbox/v1`.
+  </Step>
+  <Step title="Handle responses">
+    Read payloads from `data` and treat non-2xx responses as errors.
+  </Step>
+  <Step title="Add webhooks">
+    Verify signatures and process events idempotently.
+  </Step>
+</Steps>

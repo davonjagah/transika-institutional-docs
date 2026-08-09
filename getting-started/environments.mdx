@@ -1,0 +1,62 @@
+---
+title: "Environments"
+description: "Keep Transika sandbox and live requests, credentials, and data isolated."
+keywords: ["sandbox", "live API", "environment", "test mode"]
+icon: "server"
+---
+
+Transika provides sandbox and live routes on the same API origin. The URL path selects the environment.
+
+## Base paths
+
+| Environment | Base URL |
+| --- | --- |
+| Sandbox | `https://sbx-institutional.tran-sika.com/sandbox/v1` |
+| Live | `https://sbx-institutional.tran-sika.com/v1` |
+
+Use a `txk_test_` key with `/sandbox/v1` and a `txk_live_` key with `/v1`. Do not rely on `X-Transika-Environment`; the request path is authoritative.
+
+## Sandbox isolation
+
+Sandbox requests use test-mode records and product behavior. They do not switch to live mode based on request data or headers.
+
+```bash
+curl "https://sbx-institutional.tran-sika.com/sandbox/v1/beneficiaries?page=1&limit=20" \
+  --header "Authorization: Bearer ${TRANSIKA_TEST_API_KEY}" \
+  --header "Accept: application/json"
+```
+
+## Live isolation
+
+Live requests can initiate real business workflows. Promote deliberately:
+
+<Steps>
+  <Step title="Complete sandbox testing">
+    Exercise success, validation, authorization, and webhook retry paths.
+  </Step>
+  <Step title="Create a live key">
+    Use a separate `txk_live_` key with only the scopes your integration needs.
+  </Step>
+  <Step title="Change both configuration values">
+    Replace the sandbox base path with `/v1` and the test key with the live key.
+  </Step>
+  <Step title="Verify with a read request">
+    Confirm authentication and response parsing before initiating a live write.
+  </Step>
+</Steps>
+
+## Recommended configuration
+
+Keep the origin, path, and secret outside application code:
+
+```text
+TRANSIKA_API_ORIGIN=https://sbx-institutional.tran-sika.com
+TRANSIKA_API_PATH=/sandbox/v1
+TRANSIKA_API_KEY=txk_test_REPLACE_ME
+```
+
+The values are examples only. Store real credentials in your deployment's secret manager, not in a committed environment file.
+
+<Card title="Sandbox testing guide" icon="flask-conical" href="/guides/sandbox-testing">
+  Plan test cases and validate a workflow before moving to live mode.
+</Card>

@@ -1,0 +1,67 @@
+---
+title: "tGHS treasury"
+description: "Hold a managed GHS balance and pay Ghana mobile money or bank beneficiaries."
+keywords: ["tGHS", "treasury", "Ghana cedi", "beneficiary payout"]
+---
+
+tGHS is a managed treasury balance denominated in Ghana cedis. You can acquire tGHS through an eligible OTC trade, read your balance and activity, and pay Ghana beneficiaries.
+
+<Info>
+  tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KYC.
+</Info>
+
+## How the workflow fits together
+
+<Steps>
+  <Step title="Request managed tGHS settlement">
+    Create a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`. Accept the quote and submit the stablecoin funding transaction hash.
+  </Step>
+  <Step title="Wait for settlement">
+    Track the trade until `settled`. The quoted GHS amount then becomes available in your tGHS balance.
+  </Step>
+  <Step title="Create a Ghana beneficiary">
+    Store a mobile money or bank beneficiary in the same environment.
+  </Step>
+  <Step title="Initiate a payout">
+    Submit the beneficiary and amount, then track the result.
+  </Step>
+</Steps>
+
+Transika manages settlement behind this workflow; your integration uses only the merchant endpoints documented here.
+
+## Read your balance
+
+```bash
+curl "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+Treat the returned balance as authoritative for the selected environment.
+
+## Read treasury activity
+
+Activity kinds are `mint` and `payout`. Statuses are `pending`, `succeeded`, and `failed`.
+
+```bash
+curl "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs/activities?page=1&limit=20" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+## Pay a beneficiary
+
+```bash
+curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs/payout" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":250,"beneficiaryId":"BENEFICIARY_ID"}'
+```
+
+The request must not exceed your available balance. Use `/tghs/activities` for a consistent status view.
+
+<Warning>
+  Payout requests do not currently accept an idempotency key. If a request times out, check activity and payout history before retrying.
+</Warning>
+
+## Environment behavior
+
+Test and Live balances, beneficiaries, activities, payout requests, and linked OTC trades are isolated. Test does not move funds. Live requests can move value.

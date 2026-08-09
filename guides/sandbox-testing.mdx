@@ -1,0 +1,69 @@
+---
+title: "Sandbox testing"
+description: "Test Transika merchant workflows with isolated routes, credentials, and data."
+keywords: ["sandbox", "testing", "test API key", "simulation", "environment isolation"]
+---
+
+Use the sandbox to validate your integration without moving funds. Test and Live credentials, routes, and records are isolated.
+
+## Route and key isolation
+
+| Environment | Route prefix | API key prefix |
+| --- | --- | --- |
+| Test | `/sandbox/v1` | `txk_test_` |
+| Live | `/v1` | `txk_live_` |
+
+A key sent to the wrong environment is rejected with `400`.
+
+<Warning>
+  Do not use `X-Transika-Environment` to select an environment. The request path and key prefix are authoritative.
+</Warning>
+
+## Authentication and access
+
+Sandbox access still requires approved KYB/KYC, product entitlements, and the appropriate API key scope.
+
+## Configure a test client
+
+```bash
+export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
+export TRANSIKA_TEST_API_KEY="txk_test_REPLACE_LOCALLY"
+
+curl "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+## Data isolation
+
+OTC trades, beneficiaries, tGHS data, and webhook endpoints are scoped to the selected environment. IDs from one environment are unavailable in the other.
+
+## Test an OTC trade
+
+```bash
+curl -X POST \
+  "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+This advances a non-terminal test trade through quoting, funding, and settlement without moving funds.
+
+## Test tGHS
+
+Use a `crypto_to_fiat` trade with `settleMode: "managed_tghs"`, call `simulate-ops`, then read `/sandbox/v1/tghs`.
+
+## Test webhooks
+
+Create a Test endpoint, then call its `/test` action. The receiver gets a signed `webhook.test` payload and matching Test OTC events.
+
+## Before going live
+
+1. Create separate Live keys with minimum required scope.
+2. Recreate beneficiaries in Live.
+3. Register separate Live webhook endpoints.
+4. Confirm product features and KYB/KYC.
+5. Switch to `/v1` and Live credentials.
+6. Run a controlled Live transaction and verify reconciliation.
+
+<Warning>
+  Sandbox success confirms integration logic only. It does not guarantee that a Live transfer or payout will succeed.
+</Warning>

@@ -1,0 +1,78 @@
+---
+title: "Webhooks"
+description: "Receive signed OTC lifecycle events from Transika and operate webhook endpoints safely."
+keywords: ["webhooks", "HMAC", "signature verification", "OTC events", "event delivery"]
+---
+
+Webhooks send selected merchant events to your HTTPS endpoint.
+
+## Events currently delivered
+
+- `webhook.test`
+- `otc.trade.created`
+- `otc.trade.quoted`
+- `otc.trade.accepted`
+- `otc.trade.funding_submitted`
+- `otc.trade.funded`
+- `otc.trade.settled`
+- `otc.trade.expired`
+- `otc.trade.cancelled`
+- `otc.trade.rejected`
+
+Subscribe to an exact event, `otc.trade.*`, or `*`.
+
+## Create an endpoint
+
+```bash
+curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/webhooks/endpoints" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://example.com/webhooks/transika",
+    "description":"Test OTC events",
+    "environment":"test",
+    "events":["otc.trade.*","webhook.test"]
+  }'
+```
+
+<Warning>
+  The signing secret is visible only in the create response and immediately after rotation. Store it securely.
+</Warning>
+
+## Verify signatures
+
+Transika computes:
+
+```text
+signedPayload = timestamp + "." + rawBody
+signature = HMAC-SHA256(signingSecret, signedPayload)
+```
+
+Use the exact raw request bytes. Do not parse and re-serialize JSON before verification.
+
+```javascript
+import crypto from "node:crypto";
+
+function verify(rawBody, timestamp, received, secret) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`, "utf8")
+    .digest("hex");
+
+  return /^[a-f0-9]{64}$/i.test(received) &&
+    crypto.timingSafeEqual(
+      Buffer.from(received, "hex"),
+      Buffer.from(expected, "hex"),
+    );
+}
+```
+
+Reject stale timestamps and process event IDs idempotently.
+
+## Endpoint requirements
+
+Endpoints must use HTTPS, resolve publicly, and omit embedded URL credentials. Transika blocks private and reserved destinations and does not follow redirects.
+
+## Retries
+
+Any `2xx` response succeeds. Timeouts, network errors, and non-`2xx` responses are retried for a limited period. Delivery is at least once, so duplicate events are possible.
