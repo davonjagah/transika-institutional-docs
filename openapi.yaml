@@ -520,15 +520,65 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/redemptions/{id}:
+    get:
+      tags: [tGHS]
+      operationId: getTghsRedemption
+      summary: Get a Live tGHS redemption receipt
+      description: |
+        Returns the merchant-owned redemption receipt, including lifecycle
+        timestamps, burn transaction hash, and the matching Base or Base
+        Sepolia explorer URL. Requires `api:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Redemption receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TghsPayoutRecordResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [tGHS]
+      operationId: refreshTghsRedemption
+      summary: Reconcile a Live tGHS redemption receipt
+      description: |
+        Polls the stored Circle transaction and verifies a completed burn
+        on-chain. The redemption must belong to the calling merchant. Requires
+        `api:read` because this operation cannot submit another burn.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Reconciled redemption receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TghsPayoutRecordResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /tghs/payout:
     post:
       tags: [tGHS]
       operationId: createTghsPayout
-      summary: Pay tGHS to a Ghana beneficiary
+      summary: Request a tGHS redemption
       description: |
         Requires sufficient balance, an environment-matched beneficiary,
         approved KYB/KYC, `otc`, and `api:write`. Test requests do not move
-        funds; Live requests can move value.
+        funds. A Live request automatically submits the burn through the
+        merchant's managed wallet without an operations approval step. Live
+        processing currently stops after the on-chain burn is confirmed and
+        does not initiate a Ghana payout.
       requestBody:
         required: true
         content:
@@ -540,7 +590,7 @@ paths:
               beneficiaryId: "a53c1965-b195-4619-8878-36fe20ce15f0"
       responses:
         "201":
-          description: Payout request accepted.
+          description: Payout or Live redemption request accepted.
           content:
             application/json:
               schema:
@@ -730,10 +780,14 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     InternalError:
-      description: Unexpected server error.
+      description: Unexpected server or upstream-provider error. Internal details are never returned.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            status: error
+            message: An error occurred
+            data: null
   schemas:
     Environment:
       type: string
@@ -1259,22 +1313,37 @@ components:
       required:
         - id
         - environment
+        - network
         - amount
         - beneficiaryId
         - status
+        - burnTxHash
+        - burnExplorerUrl
         - failureReason
+        - burnConfirmedAt
         - completedAt
         - createdAt
         - updatedAt
       properties:
         id: { type: string, format: uuid }
         environment: { type: string, const: live }
+        network: { type: string, enum: [base, base-sepolia] }
         amount: { $ref: "#/components/schemas/DecimalString" }
         beneficiaryId: { type: string, format: uuid }
+        beneficiaryLabel: { type: [string, "null"] }
+        paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
+        payoutAccountNumber: { type: [string, "null"] }
         status:
           type: string
-          description: Current processing status. Use tGHS activities for the normalized pending, succeeded, or failed result.
+          enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed]
+        burnTxHash: { type: [string, "null"] }
+        burnExplorerUrl: { type: [string, "null"], format: uri }
         failureReason: { type: [string, "null"] }
+        burnConfirmedAt:
+          {
+            oneOf:
+              [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }],
+          }
         completedAt:
           {
             oneOf:

@@ -121,7 +121,7 @@
     "openapi": "openapi.yaml",
     "playground": {
       "display": "interactive",
-      "proxy": true
+      "proxy": false
     },
     "examples": {
       "languages": ["bash", "javascript", "python"],

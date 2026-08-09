@@ -23,7 +23,9 @@ tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KY
     Store a mobile money or bank beneficiary in the same environment as the balance.
   </Step>
   <Step title="Initiate a payout">
-    Submit the beneficiary and amount. Track the returned activity or payout record until it completes.
+    Submit the beneficiary and amount. In Live, the request automatically
+    submits the burn through your managed wallet. Track the redemption until
+    its on-chain burn is confirmed.
   </Step>
 </Steps>
 
@@ -78,7 +80,14 @@ curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
   }'
 ```
 
-The request must not exceed your available balance. A successful request returns a payout or payout-request record for the selected environment. Use `GET /tghs/activities` for a consistent `pending`, `succeeded`, or `failed` view.
+The request must not exceed your available balance. A successful request
+returns a payout or redemption record for the selected environment.
+
+<Warning>
+Live redemption processing temporarily stops at `burn_confirmed`. The confirmed
+on-chain burn does not initiate a Ghana payout while the payout rail is
+unavailable.
+</Warning>
 
 You can also read Live payout-request history:
 
@@ -86,6 +95,13 @@ You can also read Live payout-request history:
 curl "$TRANSIKA_API_URL/v1/tghs/redemptions" \
   -H "Authorization: Bearer $TRANSIKA_LIVE_API_KEY"
 ```
+
+Use `GET /v1/tghs/redemptions/{id}` for the complete receipt. The receipt
+includes merchant-visible lifecycle timestamps, the burn transaction hash, and
+a `burnExplorerUrl` for the correct Base network once the burn is confirmed.
+Provider-specific processing references remain internal. Receipt screens also use
+`POST /v1/tghs/redemptions/{id}/refresh` as a safe reconciliation fallback;
+this polls the existing Circle transaction and cannot submit another burn.
 
 See [Beneficiaries](/guides/beneficiaries) for supported Ghana account types and network discovery.
 
@@ -100,6 +116,8 @@ Payout requests do not currently accept an idempotency key. If a request times o
 | `GET` | `/v1/tghs` | `api:read` |
 | `GET` | `/v1/tghs/activities` | `api:read` |
 | `GET` | `/v1/tghs/redemptions` | `api:read` |
+| `GET` | `/v1/tghs/redemptions/{id}` | `api:read` |
+| `POST` | `/v1/tghs/redemptions/{id}/refresh` | `api:read` |
 | `POST` | `/v1/tghs/payout` | `api:write` |
 
 Use `/sandbox/v1/tghs*` with a Test API key.
