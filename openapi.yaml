@@ -381,8 +381,9 @@ paths:
       summary: Submit OTC funding proof
       description: |
         Requires an `accepted` trade, approved KYB/KYC, `otc`, and `api:write`.
-        Crypto-to-fiat requires `fundingTxHash`; fiat-to-crypto requires
-        `fiatProofNote` or `fiatProofUrl`.
+        Crypto-to-fiat requires `fundingTxHash`. Fiat-to-crypto requires
+        `fiatProofUrl` (hosted image URL). Prefer multipart
+        `POST /otc/trades/{id}/funding-proof/upload` for dashboard uploads.
       requestBody:
         required: true
         content:
@@ -403,6 +404,55 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/funding-proof/upload:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [OTC]
+      operationId: uploadOtcFiatFundingProof
+      summary: Upload fiat OTC funding proof image
+      description: |
+        Fiat-to-crypto only. Multipart field `proof` (PNG/JPEG/WebP, max 5 MB)
+        is required. Optional `fiatProofNote`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [proof]
+              properties:
+                proof: { type: string, format: binary }
+                fiatProofNote: { type: string, maxLength: 1000 }
+      responses:
+        "201":
+          description: Funding proof submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/funding-proof-image:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [OTC]
+      operationId: getOtcFundingProofImage
+      summary: Download uploaded fiat funding proof image
+      responses:
+        "200":
+          description: Image bytes.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /otc/trades/{id}/cancel:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -1129,6 +1179,9 @@ components:
         fiatPayInstructions: { type: [string, "null"] }
         fiatProofNote: { type: [string, "null"] }
         fiatProofUrl: { type: [string, "null"], format: uri }
+        hasFiatProofImage: { type: boolean }
+        walletScreening: { type: [object, "null"], additionalProperties: true }
+        fundingScreening: { type: [object, "null"], additionalProperties: true }
         payoutTxHash: { type: [string, "null"] }
         payoutReference: { type: [string, "null"] }
         settleMode: { type: string, enum: [fiat, managed_tghs] }
@@ -1164,7 +1217,6 @@ components:
         fiatProofUrl: { type: string, format: uri, maxLength: 512 }
       anyOf:
         - required: [fundingTxHash]
-        - required: [fiatProofNote]
         - required: [fiatProofUrl]
     OtcTradeResponse:
       allOf:

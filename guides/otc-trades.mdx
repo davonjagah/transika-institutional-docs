@@ -101,7 +101,16 @@ await fetch(`${baseUrl}/otc/trades/${tradeId}/funding-proof`, {
 });
 ```
 
-For `fiat_to_crypto`, submit at least one of `fiatProofNote` or `fiatProofUrl` instead of `fundingTxHash`.
+For `fiat_to_crypto`, upload a proof image (PNG, JPEG, or WebP) via multipart:
+
+```bash
+curl -X POST "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/funding-proof/upload" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -F "proof=@/path/to/receipt.jpg" \
+  -F "fiatProofNote=MoMo ref 12345"
+```
+
+API clients can also `POST …/funding-proof` with a hosted `fiatProofUrl` (image URL required; note optional). Text-only notes are no longer accepted without an image.
 
 ## Settlement paths
 
@@ -129,6 +138,8 @@ For `fiat_to_crypto`, Transika sends the selected stablecoin to `receiveWallet`.
 | `POST` | `/v1/otc/trades` | `api:write` |
 | `POST` | `/v1/otc/trades/:id/accept` | `api:write` |
 | `POST` | `/v1/otc/trades/:id/funding-proof` | `api:write` |
+| `POST` | `/v1/otc/trades/:id/funding-proof/upload` | `api:write` (fiat image) |
+| `GET` | `/v1/otc/trades/:id/funding-proof-image` | `api:read` |
 | `POST` | `/v1/otc/trades/:id/cancel` | `api:write` |
 | `POST` | `/v1/otc/trades/:id/simulate-ops` | `api:write`, Test only |
 
