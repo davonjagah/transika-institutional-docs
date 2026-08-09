@@ -4,10 +4,10 @@ description: "Hold a managed GHS balance and pay Ghana mobile money or bank bene
 keywords: ["tGHS", "treasury", "Ghana cedi", "beneficiary payout"]
 ---
 
-tGHS is a managed treasury balance denominated in Ghana cedis. You can acquire tGHS through an eligible OTC trade, read your balance and activity, and pay Ghana beneficiaries.
+tGHS is a managed treasury balance denominated in Ghana cedis. You can acquire tGHS through an eligible OTC trade, read your available balance and activity, and pay Ghana mobile money or bank beneficiaries.
 
 <Info>
-  tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KYC.
+tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KYC, and API keys use `api:read` or `api:write`.
 </Info>
 
 ## How the workflow fits together
@@ -17,51 +17,93 @@ tGHS is a managed treasury balance denominated in Ghana cedis. You can acquire t
     Create a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`. Accept the quote and submit the stablecoin funding transaction hash.
   </Step>
   <Step title="Wait for settlement">
-    Track the trade until `settled`. The quoted GHS amount then becomes available in your tGHS balance.
+    Track the trade until its status is `settled`. The quoted GHS amount then becomes available in your tGHS balance.
   </Step>
   <Step title="Create a Ghana beneficiary">
-    Store a mobile money or bank beneficiary in the same environment.
+    Store a mobile money or bank beneficiary in the same environment as the balance.
   </Step>
   <Step title="Initiate a payout">
-    Submit the beneficiary and amount, then track the result.
+    Submit the beneficiary and amount. Track the returned activity or payout record until it completes.
   </Step>
 </Steps>
 
-Transika manages settlement behind this workflow; your integration uses only the merchant endpoints documented here.
+Transika manages the settlement process behind this workflow; your integration uses only the merchant endpoints documented here.
 
 ## Read your balance
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs" \
+curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-Treat the returned balance as authoritative for the selected environment.
+The response includes the asset, environment, available balance, and activity counts. Treat the returned balance as authoritative for the selected environment.
 
 ## Read treasury activity
 
-Activity kinds are `mint` and `payout`. Statuses are `pending`, `succeeded`, and `failed`.
+```python
+import os
+import requests
 
-```bash
-curl "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs/activities?page=1&limit=20" \
-  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+response = requests.get(
+    f"{os.environ['TRANSIKA_API_URL']}/sandbox/v1/tghs/activities",
+    headers={"Authorization": f"Bearer {os.environ['TRANSIKA_TEST_API_KEY']}"},
+    params={"kind": "payout", "status": "succeeded", "page": 1, "limit": 20},
+)
+response.raise_for_status()
+print(response.json())
 ```
+
+Activity kinds are:
+
+- `mint`: tGHS added through a settled OTC trade.
+- `payout`: tGHS used for a beneficiary payout.
+
+Activity statuses are:
+
+- `pending`: processing has not reached a final result.
+- `succeeded`: the balance credit or payout completed.
+- `failed`: processing failed. Read the current balance before deciding whether to retry.
 
 ## Pay a beneficiary
 
+Create the Ghana beneficiary in the same environment before initiating the payout.
+
 ```bash
-curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/tghs/payout" \
+curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"amount":250,"beneficiaryId":"BENEFICIARY_ID"}'
+  -d '{
+    "amount": 250,
+    "beneficiaryId": "BENEFICIARY_ID"
+  }'
 ```
 
-The request must not exceed your available balance. Use `/tghs/activities` for a consistent status view.
+The request must not exceed your available balance. A successful request returns a payout or payout-request record for the selected environment. Use `GET /tghs/activities` for a consistent `pending`, `succeeded`, or `failed` view.
+
+You can also read Live payout-request history:
+
+```bash
+curl "$TRANSIKA_API_URL/v1/tghs/redemptions" \
+  -H "Authorization: Bearer $TRANSIKA_LIVE_API_KEY"
+```
+
+See [Beneficiaries](/guides/beneficiaries) for supported Ghana account types and network discovery.
 
 <Warning>
-  Payout requests do not currently accept an idempotency key. If a request times out, check activity and payout history before retrying.
+Payout requests do not currently accept an idempotency key. If a request times out after submission, check activity and payout-request history before retrying.
 </Warning>
+
+## Endpoints
+
+| Method | Endpoint | Scope |
+| --- | --- | --- |
+| `GET` | `/v1/tghs` | `api:read` |
+| `GET` | `/v1/tghs/activities` | `api:read` |
+| `GET` | `/v1/tghs/redemptions` | `api:read` |
+| `POST` | `/v1/tghs/payout` | `api:write` |
+
+Use `/sandbox/v1/tghs*` with a Test API key.
 
 ## Environment behavior
 
-Test and Live balances, beneficiaries, activities, payout requests, and linked OTC trades are isolated. Test does not move funds. Live requests can move value.
+Test and Live balances, beneficiaries, activities, payout requests, and linked OTC trades are isolated. Test lets you exercise the workflow without moving funds. Live requests can move value and should be submitted only after you have verified the beneficiary, amount, and environment.

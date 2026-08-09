@@ -13,17 +13,27 @@ Use the sandbox to validate your integration without moving funds. Test and Live
 | Test | `/sandbox/v1` | `txk_test_` |
 | Live | `/v1` | `txk_live_` |
 
-A key sent to the wrong environment is rejected with `400`.
+A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/sandbox/v1/*` is also rejected with `400`.
 
 <Warning>
-  Do not use `X-Transika-Environment` to select an environment. The request path and key prefix are authoritative.
+Do not use `X-Transika-Environment` to select an API-key environment. The request path and key prefix are authoritative.
 </Warning>
 
 ## Authentication and access
 
-Sandbox access still requires approved KYB/KYC, product entitlements, and the appropriate API key scope.
+Sandbox access does not bypass merchant controls:
+
+- KYB/KYC must be `approved`.
+- `otc` is required for OTC and tGHS.
+- `api_access` is required for webhook endpoint management.
+- API keys use only `api:read` and `api:write`; `api:write` implies read.
+- The request source must match the Test key's IP whitelist.
+
+If KYB/KYC is not approved, product routes return `403` with `errors.code: "kyb_required"`. If a feature is missing, gated routes return `403` with `errors.code: "feature_not_entitled"`. A non-whitelisted source returns `403` with `errors.code: "api_key_ip_not_allowed"`.
 
 ## Configure a test client
+
+Keep the base URL and key outside source code.
 
 ```bash
 export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
@@ -33,11 +43,22 @@ curl "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
+Never send a Test key to a Live route or reuse test webhook secrets in Live.
+
 ## Data isolation
 
-OTC trades, beneficiaries, tGHS data, and webhook endpoints are scoped to the selected environment. IDs from one environment are unavailable in the other.
+The following data is scoped to the selected environment:
+
+- OTC trades
+- Ghana beneficiaries
+- tGHS balances, activity, and payout requests
+- Webhook endpoints and deliveries
+
+IDs from one environment should be treated as unavailable in the other. For example, a Test beneficiary cannot settle a Live trade.
 
 ## Test an OTC trade
+
+Create the trade through `/sandbox/v1/otc/trades`, then use the Test-only helper:
 
 ```bash
 curl -X POST \
@@ -45,25 +66,55 @@ curl -X POST \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-This advances a non-terminal test trade through quoting, funding, and settlement without moving funds.
+This action advances a non-terminal test trade through quoting, funding, and settlement. It rejects terminal trades and returns `403` outside Test. Any funding instructions or transaction references returned in Test are sample data and do not prove a fiat or stablecoin transfer.
 
 ## Test tGHS
 
-Use a `crypto_to_fiat` trade with `settleMode: "managed_tghs"`, call `simulate-ops`, then read `/sandbox/v1/tghs`.
+Use a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`, then call `simulate-ops`. After the trade settles:
+
+```bash
+curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+You can test a beneficiary payout with:
+
+```bash
+curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 25,
+    "beneficiaryId": "TEST_BENEFICIARY_ID",
+    "simulateFailure": true
+  }'
+```
+
+`simulateFailure` lets you verify failure handling in Test. After the request, read `/tghs/activities` and confirm your integration handles the returned terminal state and refreshed balance.
 
 ## Test webhooks
 
-Create a Test endpoint, then call its `/test` action. The receiver gets a signed `webhook.test` payload and matching Test OTC events.
+Create an endpoint with `"environment": "test"` through the sandbox route, then call:
+
+```bash
+curl -X POST \
+  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/test" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+The receiver gets a signed `webhook.test` payload. Test endpoints also receive Test `otc.trade.*` events that match their filters. They do not receive Live events.
+
+See [Webhooks](/guides/webhooks) for signature verification and retry behavior.
 
 ## Before going live
 
-1. Create separate Live keys with minimum required scope.
-2. Recreate beneficiaries in Live.
-3. Register separate Live webhook endpoints.
-4. Confirm product features and KYB/KYC.
-5. Switch to `/v1` and Live credentials.
-6. Run a controlled Live transaction and verify reconciliation.
+1. Create separate Live API keys with the minimum required scope and production egress IPs.
+2. Recreate beneficiaries needed in Live.
+3. Register separate Live webhook endpoints and store their new signing secrets.
+4. Confirm required product features and KYB/KYC remain approved.
+5. Confirm your application uses the Live route prefix and never sends Test credentials to Live.
+6. Run a controlled Live transaction and verify your reconciliation and webhook handling.
 
 <Warning>
-  Sandbox success confirms integration logic only. It does not guarantee that a Live transfer or payout will succeed.
+Sandbox success confirms your integration logic only. It does not confirm that a Live transfer or payout will succeed.
 </Warning>

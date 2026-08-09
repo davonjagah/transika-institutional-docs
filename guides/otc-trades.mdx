@@ -13,15 +13,17 @@ Transika supports bidirectional trades between USDT or USDC and GHS.
 
 ## Requirements
 
-- Approved merchant KYB/KYC.
-- The `otc` feature entitlement.
-- `api:read` for reads and `api:write` for mutations.
-- Test keys use `/sandbox/v1`; live keys use `/v1`.
+- Your merchant KYB/KYC status must be `approved`.
+- The `otc` feature must be approved. Without it, the API returns `403` with `errors.code: "feature_not_entitled"`.
+- API keys need `api:read` for reads and `api:write` for mutations.
+- Test keys use `/sandbox/v1/*`; live keys use `/v1/*`.
 
 ## Create a trade
 
+This example requests a USDC-to-GHS payout to an existing beneficiary.
+
 ```bash
-curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/otc/trades" \
+curl -X POST "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -35,9 +37,27 @@ curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/otc/trades" \
   }'
 ```
 
-Provide either `amountIn` or `amountOut`. The quote supplies the corresponding amount, exchange rate, expiry, and funding instructions.
+Provide either `amountIn` or `amountOut`. Your quote supplies the corresponding amount, exchange rate, expiry, and funding instructions. The rate is GHS per one unit of the stablecoin.
+
+### Direction-specific fields
+
+For `crypto_to_fiat`:
+
+- `assetIn` must be `USDT` or `USDC`.
+- `sendingWallet` and `network` are required.
+- `settleMode` defaults to `fiat`.
+- `beneficiaryId` is required for `fiat` settlement.
+- `beneficiaryId` must be omitted for `managed_tghs`.
+
+For `fiat_to_crypto`:
+
+- `assetOut` must be `USDT` or `USDC`.
+- `receiveWallet` and `network` are required.
+- Settlement mode is always `fiat`.
 
 ## Trade lifecycle
+
+The main path is:
 
 ```text
 draft → quoted → accepted → funding_submitted → funded → settling → settled
@@ -45,43 +65,87 @@ draft → quoted → accepted → funding_submitted → funded → settling → 
 
 | Status | Meaning |
 | --- | --- |
-| `draft` | Waiting for a quote. |
-| `quoted` | Quote and funding instructions are ready. |
-| `accepted` | You accepted the quote before expiry. |
-| `funding_submitted` | Your funding proof was submitted. |
-| `funded` | Transika confirmed funding. |
-| `settling` | Settlement is processing. |
+| `draft` | The trade request is waiting for a quote. |
+| `quoted` | The quote and funding instructions are ready for review. |
+| `accepted` | You accepted the quote before it expired. |
+| `funding_submitted` | Your funding transaction hash or GHS payment proof was submitted. |
+| `funded` | Transika confirmed the funding submission. |
+| `settling` | The requested settlement is processing. |
 | `settled` | Settlement completed. |
-| `expired` | Quote expired before acceptance. |
-| `cancelled` | Trade was cancelled. |
-| `rejected` | Funding could not be confirmed. |
+| `expired` | The quote expired before acceptance. |
+| `cancelled` | The trade was cancelled. You can cancel a trade while it is `draft` or `quoted`. |
+| `rejected` | Transika could not confirm the funding submission. |
 
-Read the trade or consume OTC webhooks until it reaches a terminal status.
+Submitting funding proof does not confirm settlement immediately. Read the trade or consume OTC webhooks until it reaches a terminal status.
+
+## Accept and fund a quote
+
+```javascript
+const baseUrl = `${process.env.TRANSIKA_API_URL}/sandbox/v1`;
+const headers = {
+  Authorization: `Bearer ${process.env.TRANSIKA_TEST_API_KEY}`,
+  "Content-Type": "application/json",
+};
+
+await fetch(`${baseUrl}/otc/trades/${tradeId}/accept`, {
+  method: "POST",
+  headers,
+});
+
+await fetch(`${baseUrl}/otc/trades/${tradeId}/funding-proof`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify({
+    fundingTxHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  }),
+});
+```
+
+For `fiat_to_crypto`, submit at least one of `fiatProofNote` or `fiatProofUrl` instead of `fundingTxHash`.
 
 ## Settlement paths
 
 ### Fiat settlement
 
-For `crypto_to_fiat` with `settleMode: "fiat"`, Transika sends GHS to the selected beneficiary.
+For `crypto_to_fiat` with `settleMode: "fiat"`, Transika sends the quoted GHS amount to the selected beneficiary. The trade reaches `settled` after the payout completes.
 
 ### Managed tGHS settlement
 
-For `crypto_to_fiat` with `settleMode: "managed_tghs"`, the quoted GHS amount becomes available in your managed tGHS balance. No beneficiary is required.
+For `crypto_to_fiat` with `settleMode: "managed_tghs"`, the quoted GHS amount becomes available in your managed tGHS balance after settlement. No beneficiary is required when creating the trade.
+
+See [tGHS treasury](/guides/tghs-treasury).
 
 ### Crypto settlement
 
-For `fiat_to_crypto`, Transika sends the selected stablecoin to `receiveWallet`.
+For `fiat_to_crypto`, Transika sends the selected stablecoin to `receiveWallet`. A completed trade includes the settlement transaction hash.
+
+## Endpoints
+
+| Method | Endpoint | Scope |
+| --- | --- | --- |
+| `GET` | `/v1/otc/trades` | `api:read` |
+| `GET` | `/v1/otc/trades/:id` | `api:read` |
+| `GET` | `/v1/otc/balances` | `api:read` |
+| `POST` | `/v1/otc/trades` | `api:write` |
+| `POST` | `/v1/otc/trades/:id/accept` | `api:write` |
+| `POST` | `/v1/otc/trades/:id/funding-proof` | `api:write` |
+| `POST` | `/v1/otc/trades/:id/cancel` | `api:write` |
+| `POST` | `/v1/otc/trades/:id/simulate-ops` | `api:write`, Test only |
 
 ## Test the full flow
 
-In Test, `simulate-ops` advances a non-terminal trade without moving funds.
+In Test, `simulate-ops` advances a non-terminal trade so you can exercise status handling and settlement without moving funds.
 
 ```bash
 curl -X POST \
-  "https://sbx-institutional.tran-sika.com/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
+  "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
+Test responses can contain sample funding instructions and transaction references. They do not prove that fiat or stablecoins moved. Calling this endpoint in Live returns `403`.
+
 <Warning>
-  Trade creation does not currently accept an idempotency key. If a request times out, check the trade list before retrying to avoid a duplicate.
+Trade-creation requests do not currently accept an idempotency key. If a `POST` request times out after submission, check the trade list before retrying to avoid creating a duplicate.
 </Warning>
+
+See [Sandbox testing](/guides/sandbox-testing) for route isolation and test-data caveats.

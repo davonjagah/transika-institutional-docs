@@ -1,0 +1,53 @@
+---
+title: "Transika developer documentation"
+description: "Integrate Transika's merchant API for Ghana beneficiaries, OTC trades, managed tGHS balances, payouts, and webhooks."
+keywords: ["Transika API", "merchant API", "OTC", "tGHS", "Ghana payouts"]
+icon: "house"
+---
+
+Use the Transika Merchant API to exchange supported stablecoins and Ghana cedis, hold a managed GHS treasury balance, and pay Ghana mobile money or bank beneficiaries.
+
+<Columns cols={2}>
+  <Card title="Make your first request" icon="rocket" href="/quickstart">
+    Create a sandbox API key and call an authenticated read endpoint.
+  </Card>
+  <Card title="Understand authentication" icon="key-round" href="/getting-started/authentication">
+    Learn how bearer API keys, environments, and key rotation work.
+  </Card>
+  <Card title="Choose an environment" icon="server" href="/getting-started/environments">
+    Keep sandbox and live data, routes, and credentials separate.
+  </Card>
+  <Card title="Handle API responses" icon="braces" href="/getting-started/responses-and-errors">
+    Parse the common response envelope and implement consistent error handling.
+  </Card>
+</Columns>
+
+## What you can build
+
+- Maintain mobile money and bank beneficiaries.
+- Request, accept, and fund OTC trades.
+- Settle eligible trades into a managed tGHS balance.
+- Pay Ghana beneficiaries from your tGHS balance.
+- Reconcile activity from the transaction ledger.
+- Receive signed OTC lifecycle events through webhooks.
+
+## Integration model
+
+<Steps>
+  <Step title="Complete merchant verification">
+    API access requires an approved KYB status and access to the product you want to integrate.
+  </Step>
+  <Step title="Start in sandbox">
+    Create a test key and send requests through `/sandbox/v1`.
+  </Step>
+  <Step title="Handle the common envelope">
+    Read successful payloads from `data` and treat non-2xx responses as errors.
+  </Step>
+  <Step title="Add webhooks and idempotent processing">
+    Verify webhook signatures, acknowledge deliveries quickly, and make event handling safe to repeat.
+  </Step>
+</Steps>
+
+<Card title="Continue with the quickstart" icon="arrow-right" href="/quickstart">
+  Send a safe read request, inspect the response envelope, and choose your next integration guide.
+</Card>

@@ -9,11 +9,11 @@ List endpoints use page-based pagination. Request one page at a time and preserv
 
 ## Query parameters
 
-<ParamField query="page" default="1" type="integer">
+<ParamField query="page" type="integer" default="1">
   One-based page number. Values below `1` resolve to the first page.
 </ParamField>
 
-<ParamField query="limit" default="20" type="integer">
+<ParamField query="limit" type="integer" default="20">
   Number of records to return. Transika clamps the value to the range `1` through `100`.
 </ParamField>
 

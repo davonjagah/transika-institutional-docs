@@ -1,0 +1,1409 @@
+openapi: 3.1.0
+info:
+  title: Transika Merchant API
+  version: 1.0.0
+  description: |
+    Merchant-facing contract for Transika treasury, beneficiary, OTC, tGHS,
+    transaction, and webhook products.
+
+    Authenticate with a live (`txk_live_...`) key on the live server or a test
+    (`txk_test_...`) key on the sandbox server. Keys and routes cannot be mixed.
+    Except for the public FX rate, merchants must have approved KYB/KYC.
+    Feature-gated endpoints additionally require the named active entitlement.
+    Read operations require `api:read`; write operations require `api:write`,
+    which also grants read access. Every API key is restricted to its configured
+    IPv4/IPv6 addresses or CIDR ranges; nonmatching source IPs receive `403`
+    with `errors.code` set to `api_key_ip_not_allowed`.
+servers:
+  - url: https://sbx-institutional.tran-sika.com/v1
+    description: Live
+  - url: https://sbx-institutional.tran-sika.com/sandbox/v1
+    description: Sandbox
+tags:
+  - name: FX
+    description: Public foreign-exchange reference rates.
+  - name: Beneficiaries
+    description: Ghana payout account discovery and storage.
+  - name: Transactions
+    description: Unified merchant treasury transaction history.
+  - name: OTC
+    description: Over-the-counter stablecoin and fiat trades.
+  - name: tGHS
+    description: Managed GHS balances, activity, and Ghana beneficiary payouts.
+  - name: Webhooks
+    description: Merchant webhook endpoint administration.
+security:
+  - bearerAuth: []
+paths:
+  /fx/rate:
+    get:
+      tags: [FX]
+      operationId: getFxRate
+      summary: Get the current GHS/USDT rate
+      description: Public and unauthenticated.
+      security: []
+      responses:
+        "200":
+          description: Current rate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FxRateResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  ghsPerUsdt: 15.5
+                  updatedAt: "2026-08-08T12:00:00.000Z"
+                  updatedByName: null
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /beneficiaries/networks:
+    get:
+      tags: [Beneficiaries]
+      operationId: listBeneficiaryNetworks
+      summary: List supported Ghana payout networks
+      description: Requires approved KYB/KYC and `api:read`.
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [momo, bank]
+      responses:
+        "200":
+          description: Supported networks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkListResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /beneficiaries/resolve:
+    post:
+      tags: [Beneficiaries]
+      operationId: resolveBeneficiaryAccount
+      summary: Resolve a Ghana payout account
+      description: Name enquiry only; does not save a beneficiary. Requires approved KYB/KYC and `api:read`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveBeneficiaryRequest"
+            example:
+              networkCode: MTNGH
+              accountNumber: "233241234567"
+      responses:
+        "201":
+          description: Resolved account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolvedBeneficiaryResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+      x-codeSamples:
+        - lang: curl
+          source: |
+            curl -X POST "$TRANSIKA_BASE_URL/beneficiaries/resolve" \
+              -H "Authorization: Bearer $TRANSIKA_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"networkCode":"MTNGH","accountNumber":"233241234567"}'
+  /beneficiaries:
+    get:
+      tags: [Beneficiaries]
+      operationId: listBeneficiaries
+      summary: List beneficiaries
+      description: Requires approved KYB/KYC and `api:read`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+        - name: customerId
+          in: query
+          schema:
+            type: string
+            maxLength: 36
+      responses:
+        "200":
+          description: Paginated beneficiaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeneficiaryListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Beneficiaries]
+      operationId: createBeneficiary
+      summary: Create a beneficiary
+      description: Requires approved KYB/KYC and `api:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeneficiaryInput"
+      responses:
+        "201":
+          description: Beneficiary created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeneficiaryResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /beneficiaries/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    patch:
+      tags: [Beneficiaries]
+      operationId: updateBeneficiary
+      summary: Update a beneficiary
+      description: Requires approved KYB/KYC and `api:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeneficiaryPatch"
+      responses:
+        "200":
+          description: Beneficiary updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeneficiaryResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Beneficiaries]
+      operationId: deleteBeneficiary
+      summary: Delete a beneficiary
+      description: Requires approved KYB/KYC and `api:write`.
+      responses:
+        "200":
+          description: Beneficiary deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptySuccessResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /transactions:
+    get:
+      tags: [Transactions]
+      operationId: listTransactions
+      summary: List tGHS treasury transactions
+      description: Requires approved KYB/KYC and `api:read`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TghsActivityStatus"
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [payout, mint]
+        - name: customerId
+          in: query
+          description: Accepted for compatibility; current treasury rows have no customer association.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated treasury transactions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/balances:
+    get:
+      tags: [OTC]
+      operationId: listOtcBalances
+      summary: List managed OTC balances
+      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
+      responses:
+        "200":
+          description: Managed balances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcBalanceListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades:
+    get:
+      tags: [OTC]
+      operationId: listOtcTrades
+      summary: List OTC trades
+      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OtcTradeStatus"
+      responses:
+        "200":
+          description: Paginated trades.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [OTC]
+      operationId: createOtcTrade
+      summary: Create an OTC trade
+      description: |
+        Requires approved KYB/KYC, active `otc` entitlement, and `api:write`.
+        For `crypto_to_fiat`, `assetIn` must be USDT/USDC; `sendingWallet`,
+        `network`, and one amount are required. Fiat settlement also requires a
+        beneficiary. For `fiat_to_crypto`, `assetOut` must be USDT/USDC;
+        `receiveWallet` and one amount are required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOtcTradeRequest"
+            examples:
+              cryptoToManagedTghs:
+                value:
+                  direction: crypto_to_fiat
+                  settleMode: managed_tghs
+                  amountIn: 1000
+                  assetIn: USDC
+                  network: base
+                  sendingWallet: "0x1111111111111111111111111111111111111111"
+              fiatToCrypto:
+                value:
+                  direction: fiat_to_crypto
+                  amountIn: 15500
+                  assetOut: USDT
+                  receiveWallet: "0x2222222222222222222222222222222222222222"
+      responses:
+        "201":
+          description: Draft trade created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [OTC]
+      operationId: getOtcTrade
+      summary: Get an OTC trade
+      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
+      responses:
+        "200":
+          description: Trade.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [OTC]
+      operationId: acceptOtcTrade
+      summary: Accept an OTC quote
+      description: Requires a non-expired `quoted` trade, approved KYB/KYC, `otc`, and `api:write`.
+      responses:
+        "201":
+          description: Quote accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/funding-proof:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [OTC]
+      operationId: submitOtcFundingProof
+      summary: Submit OTC funding proof
+      description: |
+        Requires an `accepted` trade, approved KYB/KYC, `otc`, and `api:write`.
+        Crypto-to-fiat requires `fundingTxHash`; fiat-to-crypto requires
+        `fiatProofNote` or `fiatProofUrl`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtcFundingProofRequest"
+      responses:
+        "201":
+          description: Funding proof submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [OTC]
+      operationId: cancelOtcTrade
+      summary: Cancel an OTC trade
+      description: Merchant cancellation is allowed only while `draft` or `quoted`. Requires `otc` and `api:write`.
+      responses:
+        "201":
+          description: Trade cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /otc/trades/{id}/simulate-ops:
+    servers:
+      - url: https://sbx-institutional.tran-sika.com/sandbox/v1
+        description: Sandbox only
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [OTC]
+      operationId: simulateOtcOperations
+      summary: Simulate desk processing
+      description: |
+        Sandbox-only. Advances an eligible trade through quote, funding, and
+        settlement so you can test lifecycle handling without moving funds. Requires
+        approved KYB/KYC, active `otc` entitlement, and `api:write`.
+      responses:
+        "201":
+          description: Simulated desk actions applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtcTradeResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs:
+    get:
+      tags: [tGHS]
+      operationId: getTghsSummary
+      summary: Get the managed tGHS summary
+      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`. The returned balance is authoritative for the selected environment.
+      responses:
+        "200":
+          description: Available balance, managed account details, and activity counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TghsSummaryResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/activities:
+    get:
+      tags: [tGHS]
+      operationId: listTghsActivities
+      summary: List tGHS activities
+      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [all, mint, payout]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, succeeded, failed, pending]
+      responses:
+        "200":
+          description: Paginated activities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TghsActivityListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/redemptions:
+    get:
+      tags: [tGHS]
+      operationId: listTghsRedemptions
+      summary: List Live tGHS payout requests
+      description: |
+        Lists Live payout requests, newest first. Requires approved KYB/KYC,
+        active `otc` entitlement, and `api:read`. Use tGHS activities for a
+        consistent view across Test and Live.
+      responses:
+        "200":
+          description: Up to 100 Live payout requests, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TghsPayoutRecordListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/payout:
+    post:
+      tags: [tGHS]
+      operationId: createTghsPayout
+      summary: Pay tGHS to a Ghana beneficiary
+      description: |
+        Requires sufficient balance, an environment-matched beneficiary,
+        approved KYB/KYC, `otc`, and `api:write`. Test requests do not move
+        funds; Live requests can move value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TghsPayoutRequest"
+            example:
+              amount: 250
+              beneficiaryId: "a53c1965-b195-4619-8878-36fe20ce15f0"
+      responses:
+        "201":
+          description: Payout request accepted.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TghsPayoutRecordResponse"
+                  - $ref: "#/components/schemas/TghsPayoutResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /webhooks/endpoints:
+    get:
+      tags: [Webhooks]
+      operationId: listWebhookEndpoints
+      summary: List webhook endpoints
+      description: Requires approved KYB/KYC, active `api_access` entitlement, and `api:read`.
+      responses:
+        "200":
+          description: Active endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Webhooks]
+      operationId: createWebhookEndpoint
+      summary: Create a webhook endpoint
+      description: |
+        Requires approved KYB/KYC, active `api_access` entitlement, and
+        `api:write`. The signing secret is returned once. URLs must be public,
+        safe HTTPS destinations accepted by the service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookEndpointRequest"
+            example:
+              url: https://merchant.example/webhooks/transika
+              description: Treasury events
+              environment: test
+              events: ["otc.trade.*", "webhook.test"]
+      responses:
+        "201":
+          description: Endpoint created; securely store the one-time secret.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointCreatedResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /webhooks/endpoints/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    delete:
+      tags: [Webhooks]
+      operationId: deleteWebhookEndpoint
+      summary: Revoke a webhook endpoint
+      description: Requires approved KYB/KYC, active `api_access` entitlement, and `api:write`.
+      responses:
+        "200":
+          description: Endpoint revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResourceResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /webhooks/endpoints/{id}/rotate-secret:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Webhooks]
+      operationId: rotateWebhookSecret
+      summary: Rotate a webhook signing secret
+      description: Requires approved KYB/KYC, active `api_access` entitlement, and `api:write`. The new secret is returned once.
+      responses:
+        "201":
+          description: Secret rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotatedWebhookSecretResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /webhooks/endpoints/{id}/test:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Webhooks]
+      operationId: testWebhookEndpoint
+      summary: Queue a test webhook
+      description: Requires an enabled endpoint, approved KYB/KYC, `api_access`, and `api:write`.
+      responses:
+        "201":
+          description: Test delivery queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookTestResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "txk_live_... or txk_test_..."
+      description: Use a live key with the live server and a test key with the sandbox server. The request source must match the key's IP whitelist.
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Search:
+      name: q
+      in: query
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Malformed request or live/test key and server mismatch.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Missing, invalid, or revoked bearer credential.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: API-key IP whitelist, KYB/KYC, feature entitlement, scope, role, or environment requirement failed. A source-IP denial has `errors.code` set to `api_key_ip_not_allowed`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Resource not found in the authenticated merchant and environment.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: Resource already exists or conflicts with current state.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ValidationError:
+      description: Request fields or resource lifecycle state are invalid.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+  schemas:
+    Environment:
+      type: string
+      enum: [live, test]
+    DateTime:
+      type: string
+      format: date-time
+    DecimalString:
+      type: string
+      pattern: '^-?[0-9]+(?:\.[0-9]+)?$'
+      example: "250.00000000"
+    SuccessBase:
+      type: object
+      required: [status, message, data]
+      properties:
+        status:
+          const: success
+        message:
+          type: string
+        data: {}
+    ErrorResponse:
+      type: object
+      required: [status, message, data]
+      properties:
+        status:
+          const: error
+        message:
+          type: string
+          example: Unauthorized
+        errors:
+          description: Optional validation or policy details.
+        data:
+          type: "null"
+    EmptySuccessResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: "null"
+    DeletedResourceResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+    FxRate:
+      type: object
+      required: [ghsPerUsdt, updatedAt, updatedByName]
+      properties:
+        ghsPerUsdt:
+          type: number
+          exclusiveMinimum: 0
+        updatedAt:
+          $ref: "#/components/schemas/DateTime"
+        updatedByName:
+          type: [string, "null"]
+    FxRateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/FxRate" }
+    PayoutNetwork:
+      type: object
+      required: [code, kind, label]
+      properties:
+        code:
+          type: string
+          examples: [MTNGH, STANBICGH]
+        kind:
+          type: string
+          enum: [momo, bank]
+        label:
+          type: string
+    NetworkListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [networks]
+              properties:
+                networks:
+                  type: array
+                  items: { $ref: "#/components/schemas/PayoutNetwork" }
+    ResolveBeneficiaryRequest:
+      type: object
+      additionalProperties: false
+      required: [networkCode, accountNumber]
+      properties:
+        networkCode:
+          type: string
+          minLength: 2
+          maxLength: 32
+        accountNumber:
+          type: string
+          minLength: 4
+          maxLength: 64
+    ResolvedBeneficiary:
+      type: object
+      required:
+        [networkCode, accountType, networkLabel, accountNumber, accountName]
+      properties:
+        networkCode: { type: string }
+        accountType: { type: string, enum: [momo, bank] }
+        networkLabel: { type: string }
+        accountNumber: { type: string }
+        accountName: { type: string }
+    ResolvedBeneficiaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/ResolvedBeneficiary" }
+    BeneficiaryInput:
+      type: object
+      additionalProperties: false
+      required: [label, accountType, accountNumber, networkCode]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        accountType: { type: string, enum: [momo, bank] }
+        accountNumber: { type: string, minLength: 4, maxLength: 64 }
+        networkCode: { type: string, minLength: 2, maxLength: 32 }
+        accountName: { type: [string, "null"], minLength: 1, maxLength: 200 }
+        bankName: { type: string, minLength: 1, maxLength: 120 }
+        customerId: { type: [string, "null"], minLength: 1, maxLength: 36 }
+    BeneficiaryPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        accountType: { type: string, enum: [momo, bank] }
+        accountNumber: { type: string, minLength: 4, maxLength: 64 }
+        networkCode: { type: string, minLength: 2, maxLength: 32 }
+        accountName: { type: [string, "null"], minLength: 1, maxLength: 200 }
+        bankName: { type: string, minLength: 1, maxLength: 120 }
+        customerId: { type: [string, "null"], minLength: 1, maxLength: 36 }
+    Beneficiary:
+      type: object
+      required:
+        [
+          id,
+          environment,
+          label,
+          accountType,
+          accountNumber,
+          networkCode,
+          accountName,
+          bankName,
+          customerId,
+          customerName,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        environment: { $ref: "#/components/schemas/Environment" }
+        label: { type: string }
+        accountType: { type: string, enum: [momo, bank] }
+        accountNumber: { type: string }
+        networkCode: { type: string }
+        accountName: { type: [string, "null"] }
+        bankName: { type: [string, "null"] }
+        customerId: { type: [string, "null"] }
+        customerName: { type: [string, "null"] }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    BeneficiaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Beneficiary" }
+    BeneficiaryList:
+      type: object
+      required: [beneficiaries, total, page, limit, environment]
+      properties:
+        beneficiaries:
+          type: array
+          items: { $ref: "#/components/schemas/Beneficiary" }
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        environment: { $ref: "#/components/schemas/Environment" }
+    BeneficiaryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/BeneficiaryList" }
+    TghsActivityStatus:
+      type: string
+      enum: [succeeded, failed, pending]
+    Transaction:
+      type: object
+      required:
+        [
+          id,
+          tradeId,
+          type,
+          source,
+          environment,
+          ghsAmount,
+          usdtAmount,
+          tghsAmount,
+          label,
+          reference,
+          payeeName,
+          paymentMode,
+          statusComposite,
+          payoutStatus,
+          customerId,
+          customerName,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        tradeId: { type: [string, "null"] }
+        type: { type: string, enum: [tghs_payout, tghs_mint] }
+        source: { type: string, const: treasury }
+        environment:
+          anyOf:
+            - $ref: "#/components/schemas/Environment"
+            - type: "null"
+        ghsAmount: { type: [number, "null"] }
+        usdtAmount: { type: [number, "null"] }
+        tghsAmount:
+          anyOf:
+            - $ref: "#/components/schemas/DecimalString"
+            - type: "null"
+        label: { type: [string, "null"] }
+        reference: { type: [string, "null"] }
+        payeeName: { type: [string, "null"] }
+        paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
+        statusComposite: { $ref: "#/components/schemas/TghsActivityStatus" }
+        payoutStatus: { $ref: "#/components/schemas/TghsActivityStatus" }
+        customerId: { type: [string, "null"] }
+        customerName: { type: [string, "null"] }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    TransactionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [transactions, total, page, limit, source, environment]
+              properties:
+                transactions:
+                  type: array
+                  items: { $ref: "#/components/schemas/Transaction" }
+                total: { type: integer, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1, maximum: 100 }
+                source: { type: string, const: treasury }
+                environment: { $ref: "#/components/schemas/Environment" }
+    OtcTradeStatus:
+      type: string
+      enum:
+        [
+          draft,
+          quoted,
+          accepted,
+          funding_submitted,
+          funded,
+          settling,
+          settled,
+          expired,
+          cancelled,
+          rejected,
+        ]
+    OtcTrade:
+      type: object
+      required:
+        [
+          id,
+          environment,
+          direction,
+          status,
+          amountIn,
+          amountOut,
+          assetIn,
+          assetOut,
+          network,
+          rate,
+          quotedAt,
+          quoteExpiresAt,
+          sendingWallet,
+          receiveWallet,
+          treasuryAddress,
+          fundingTxHash,
+          fiatPayRef,
+          fiatPayInstructions,
+          fiatProofNote,
+          fiatProofUrl,
+          payoutTxHash,
+          payoutReference,
+          settleMode,
+          beneficiaryId,
+          failReason,
+          disbursementNote,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        environment: { $ref: "#/components/schemas/Environment" }
+        direction: { type: string, enum: [crypto_to_fiat, fiat_to_crypto] }
+        status: { $ref: "#/components/schemas/OtcTradeStatus" }
+        amountIn:
+          anyOf:
+            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
+        amountOut:
+          anyOf:
+            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
+        assetIn: { type: [string, "null"] }
+        assetOut: { type: [string, "null"] }
+        network: { type: [string, "null"] }
+        rate:
+          anyOf:
+            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
+        quotedAt:
+          anyOf: [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }]
+        quoteExpiresAt:
+          anyOf: [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }]
+        sendingWallet: { type: [string, "null"] }
+        receiveWallet: { type: [string, "null"] }
+        treasuryAddress: { type: [string, "null"] }
+        fundingTxHash: { type: [string, "null"] }
+        fiatPayRef: { type: [string, "null"] }
+        fiatPayInstructions: { type: [string, "null"] }
+        fiatProofNote: { type: [string, "null"] }
+        fiatProofUrl: { type: [string, "null"], format: uri }
+        payoutTxHash: { type: [string, "null"] }
+        payoutReference: { type: [string, "null"] }
+        settleMode: { type: string, enum: [fiat, managed_tghs] }
+        beneficiaryId: { type: [string, "null"] }
+        failReason: { type: [string, "null"] }
+        disbursementNote: { type: [string, "null"] }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    CreateOtcTradeRequest:
+      type: object
+      additionalProperties: false
+      required: [direction]
+      properties:
+        direction: { type: string, enum: [crypto_to_fiat, fiat_to_crypto] }
+        settleMode: { type: string, enum: [fiat, managed_tghs] }
+        amountIn: { type: number, exclusiveMinimum: 0 }
+        amountOut: { type: number, exclusiveMinimum: 0 }
+        assetIn: { type: string, minLength: 2, maxLength: 16 }
+        assetOut: { type: string, minLength: 2, maxLength: 16 }
+        network: { type: string, minLength: 1, maxLength: 64 }
+        sendingWallet: { type: string, minLength: 8, maxLength: 128 }
+        receiveWallet: { type: string, minLength: 8, maxLength: 128 }
+        beneficiaryId: { type: [string, "null"], minLength: 1, maxLength: 36 }
+      anyOf:
+        - required: [amountIn]
+        - required: [amountOut]
+    OtcFundingProofRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        fundingTxHash: { type: string, minLength: 8, maxLength: 128 }
+        fiatProofNote: { type: string, minLength: 1, maxLength: 1000 }
+        fiatProofUrl: { type: string, format: uri, maxLength: 512 }
+      anyOf:
+        - required: [fundingTxHash]
+        - required: [fiatProofNote]
+        - required: [fiatProofUrl]
+    OtcTradeResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/OtcTrade" }
+    OtcTradeListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [trades, total, page, limit, environment]
+              properties:
+                trades:
+                  type: array
+                  items: { $ref: "#/components/schemas/OtcTrade" }
+                total: { type: integer, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1, maximum: 100 }
+                environment: { $ref: "#/components/schemas/Environment" }
+    OtcBalanceListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [environment, balances]
+              properties:
+                environment: { $ref: "#/components/schemas/Environment" }
+                balances:
+                  type: array
+                  items:
+                    type: object
+                    required: [asset, balance, environment]
+                    properties:
+                      asset: { type: string, const: tGHS }
+                      balance: { $ref: "#/components/schemas/DecimalString" }
+                      environment: { $ref: "#/components/schemas/Environment" }
+    TghsActivity:
+      type: object
+      required:
+        [
+          id,
+          environment,
+          kind,
+          status,
+          entryType,
+          amount,
+          asset,
+          tradeId,
+          note,
+          txHash,
+          network,
+          explorerTxUrl,
+          beneficiaryId,
+          paymentMode,
+          paymentReference,
+          payoutAccountNumber,
+          payoutBankName,
+          payoutLabel,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        environment: { $ref: "#/components/schemas/Environment" }
+        kind: { type: string, enum: [mint, payout] }
+        status: { $ref: "#/components/schemas/TghsActivityStatus" }
+        entryType: { type: string, enum: [credit, debit] }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        asset: { type: string, const: tGHS }
+        tradeId: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        txHash: { type: [string, "null"] }
+        network: { type: string, const: base }
+        explorerTxUrl: { type: [string, "null"], format: uri }
+        beneficiaryId: { type: [string, "null"] }
+        paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
+        paymentReference: { type: [string, "null"] }
+        payoutAccountNumber: { type: [string, "null"] }
+        payoutBankName: { type: [string, "null"] }
+        payoutLabel: { type: [string, "null"] }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+    TghsActivityListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [activities, total, page, limit, environment]
+              properties:
+                activities:
+                  type: array
+                  items: { $ref: "#/components/schemas/TghsActivity" }
+                total: { type: integer, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1, maximum: 100 }
+                environment: { $ref: "#/components/schemas/Environment" }
+    TghsSummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [asset, environment, balance, wallet, activityCounts]
+              properties:
+                asset: { type: string, const: tGHS }
+                environment: { $ref: "#/components/schemas/Environment" }
+                balance:
+                  allOf:
+                    - $ref: "#/components/schemas/DecimalString"
+                  description: Available tGHS balance for the selected environment.
+                wallet:
+                  type: object
+                  description: Managed account metadata returned for reconciliation.
+                  required: [address, network, explorerUrl, label]
+                  properties:
+                    address: { type: string }
+                    network: { type: string, const: base }
+                    explorerUrl: { type: string, format: uri }
+                    label: { type: [string, "null"] }
+                activityCounts:
+                  type: object
+                  required: [mint, payout, failed]
+                  properties:
+                    mint: { type: integer, minimum: 0 }
+                    payout: { type: integer, minimum: 0 }
+                    failed: { type: integer, minimum: 0 }
+    TghsPayoutRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, beneficiaryId]
+      properties:
+        amount: { type: number, exclusiveMinimum: 0 }
+        beneficiaryId: { type: string, minLength: 1, maxLength: 36 }
+        simulateFailure:
+          type: boolean
+          description: Sandbox testing switch; do not use in live requests.
+    TghsPayoutRecord:
+      type: object
+      required:
+        - id
+        - environment
+        - amount
+        - beneficiaryId
+        - status
+        - failureReason
+        - completedAt
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        environment: { type: string, const: live }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        beneficiaryId: { type: string, format: uuid }
+        status:
+          type: string
+          description: Current processing status. Use tGHS activities for the normalized pending, succeeded, or failed result.
+        failureReason: { type: [string, "null"] }
+        completedAt:
+          {
+            oneOf:
+              [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }],
+          }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    TghsPayoutRecordResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/TghsPayoutRecord" }
+    TghsPayoutRecordListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [redemptions]
+              properties:
+                redemptions:
+                  type: array
+                  items: { $ref: "#/components/schemas/TghsPayoutRecord" }
+    TghsPayoutResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [activity, balance, environment]
+              properties:
+                activity: { $ref: "#/components/schemas/TghsActivity" }
+                balance: { $ref: "#/components/schemas/DecimalString" }
+                environment: { $ref: "#/components/schemas/Environment" }
+    CreateWebhookEndpointRequest:
+      type: object
+      additionalProperties: false
+      required: [url, environment]
+      properties:
+        url: { type: string, format: uri, maxLength: 512 }
+        description: { type: string, maxLength: 200 }
+        environment: { $ref: "#/components/schemas/Environment" }
+        events:
+          type: array
+          description: |
+            Event filters for merchant HTTP delivery. Supported filters include
+            `otc.trade.*`, exact OTC event names, `webhook.test`, and `*`.
+          items:
+            type: string
+            examples: [otc.trade.*, webhook.test]
+    WebhookEndpoint:
+      type: object
+      required:
+        [
+          id,
+          url,
+          description,
+          enabled,
+          environment,
+          events,
+          secretPrefix,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        description: { type: [string, "null"] }
+        enabled: { type: boolean }
+        environment: { $ref: "#/components/schemas/Environment" }
+        events:
+          type: [array, "null"]
+          items: { type: string }
+        secretPrefix:
+          type: string
+          description: Non-secret identifier for the active signing secret.
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+    WebhookEndpointListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [endpoints]
+              properties:
+                endpoints:
+                  type: array
+                  items: { $ref: "#/components/schemas/WebhookEndpoint" }
+    WebhookEndpointCreatedResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEndpoint"
+                - type: object
+                  required: [signingSecret]
+                  properties:
+                    signingSecret:
+                      type: string
+                      readOnly: true
+                      description: One-time secret value; never returned by list operations.
+    RotatedWebhookSecretResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id, secretPrefix, signingSecret]
+              properties:
+                id: { type: string, format: uuid }
+                secretPrefix: { type: string }
+                signingSecret:
+                  type: string
+                  readOnly: true
+                  description: One-time secret value.
+    WebhookTestResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [deliveryId, enqueued]
+              properties:
+                deliveryId: { type: string, format: uuid }
+                enqueued: { type: boolean }

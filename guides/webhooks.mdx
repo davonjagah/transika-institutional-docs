@@ -4,9 +4,11 @@ description: "Receive signed OTC lifecycle events from Transika and operate webh
 keywords: ["webhooks", "HMAC", "signature verification", "OTC events", "event delivery"]
 ---
 
-Webhooks send selected merchant events to your HTTPS endpoint.
+Webhooks send selected merchant events to your HTTPS endpoint. Endpoint management requires approved KYB/KYC, the `api_access` feature, and `api:read` or `api:write`.
 
 ## Events currently delivered
+
+Merchant HTTP webhooks currently deliver only:
 
 - `webhook.test`
 - `otc.trade.created`
@@ -19,25 +21,60 @@ Webhooks send selected merchant events to your HTTPS endpoint.
 - `otc.trade.cancelled`
 - `otc.trade.rejected`
 
-Subscribe to an exact event, `otc.trade.*`, or `*`.
+You can subscribe to an exact event, `otc.trade.*`, or `*`. An empty or omitted `events` array receives all events that are actually emitted to merchant HTTP webhooks.
 
 ## Create an endpoint
 
 ```bash
-curl -X POST "https://sbx-institutional.tran-sika.com/sandbox/v1/webhooks/endpoints" \
+curl -X POST "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "url":"https://example.com/webhooks/transika",
-    "description":"Test OTC events",
-    "environment":"test",
-    "events":["otc.trade.*","webhook.test"]
+    "url": "https://example.com/webhooks/transika",
+    "description": "Test OTC events",
+    "environment": "test",
+    "events": ["otc.trade.*", "webhook.test"]
   }'
 ```
 
+The create response includes `signingSecret`. Copy it immediately and store it in your secret manager.
+
 <Warning>
-  The signing secret is visible only in the create response and immediately after rotation. Store it securely.
+The full signing secret is visible only in the create response and immediately after rotation. Endpoint listings return only `secretPrefix`. If you lose the secret, rotate it.
 </Warning>
+
+Endpoints are environment-specific. A Test endpoint receives Test OTC events; a Live endpoint receives Live OTC events.
+
+## Request format
+
+Each delivery is an HTTP `POST` with a JSON body:
+
+```json
+{
+  "id": "EVENT_ID",
+  "type": "otc.trade.quoted",
+  "created": "2026-08-08T12:00:00.000Z",
+  "data": {
+    "trade": {
+      "id": "TRADE_ID",
+      "status": "quoted",
+      "environment": "test"
+    }
+  }
+}
+```
+
+Headers include:
+
+```text
+Content-Type: application/json
+X-Transika-Event: otc.trade.quoted
+X-Transika-Delivery: DELIVERY_ID
+X-Transika-Timestamp: 1786190400
+X-Transika-Signature: t=1786190400,v1=HEX_HMAC
+```
+
+Use the event `id` or delivery ID for idempotency. Your handler should return any `2xx` response only after it has durably accepted the event.
 
 ## Verify signatures
 
@@ -48,31 +85,92 @@ signedPayload = timestamp + "." + rawBody
 signature = HMAC-SHA256(signingSecret, signedPayload)
 ```
 
-Use the exact raw request bytes. Do not parse and re-serialize JSON before verification.
+The timestamp is the `t` value in `X-Transika-Signature`. The body must be the exact raw request bytes decoded as UTF-8. Do not parse and re-serialize JSON before verification.
 
 ```javascript
 import crypto from "node:crypto";
+import express from "express";
 
-function verify(rawBody, timestamp, received, secret) {
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`, "utf8")
-    .digest("hex");
+const app = express();
 
-  return /^[a-f0-9]{64}$/i.test(received) &&
-    crypto.timingSafeEqual(
-      Buffer.from(received, "hex"),
-      Buffer.from(expected, "hex"),
+app.post(
+  "/webhooks/transika",
+  express.raw({ type: "application/json" }),
+  (request, response) => {
+    const rawBody = request.body.toString("utf8");
+    const signatureHeader = request.get("X-Transika-Signature") ?? "";
+    const parts = Object.fromEntries(
+      signatureHeader.split(",").map((part) => part.split("=", 2)),
     );
-}
+
+    const timestamp = parts.t;
+    const received = parts.v1;
+    if (!timestamp || !received) return response.sendStatus(400);
+
+    const expected = crypto
+      .createHmac("sha256", process.env.TRANSIKA_WEBHOOK_SECRET)
+      .update(`${timestamp}.${rawBody}`, "utf8")
+      .digest("hex");
+
+    const valid =
+      /^[a-f0-9]{64}$/i.test(received) &&
+      crypto.timingSafeEqual(
+        Buffer.from(received, "hex"),
+        Buffer.from(expected, "hex"),
+      );
+
+    if (!valid) return response.sendStatus(401);
+
+    const event = JSON.parse(rawBody);
+    // Persist and process event.id idempotently.
+    return response.sendStatus(204);
+  },
+);
 ```
 
-Reject stale timestamps and process event IDs idempotently.
+Also reject stale timestamps using a tolerance appropriate for your system clock and delivery queue. Compare `X-Transika-Timestamp` with the signed `t` value before processing.
 
-## Endpoint requirements
+## Endpoint security requirements
 
-Endpoints must use HTTPS, resolve publicly, and omit embedded URL credentials. Transika blocks private and reserved destinations and does not follow redirects.
+Endpoint URLs must:
+
+- Use HTTPS.
+- Resolve publicly; private, loopback, link-local, multicast, reserved, `.local`, and localhost addresses are blocked.
+- Omit embedded URL credentials.
+
+Transika rejects unsafe destinations and does not follow redirects. Your endpoint must still authenticate every signature and apply normal request limits.
 
 ## Retries
 
-Any `2xx` response succeeds. Timeouts, network errors, and non-`2xx` responses are retried for a limited period. Delivery is at least once, so duplicate events are possible.
+A delivery succeeds on any `2xx` response. Timeouts, network errors, and non-`2xx` responses are retried for a limited period. Delivery is at least once, so duplicate events are possible and your handler must process event IDs idempotently.
+
+## Test, rotate, and revoke
+
+```bash
+# Queue webhook.test
+curl -X POST \
+  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/test" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+
+# Rotate the signing secret
+curl -X POST \
+  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/rotate-secret" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+
+# Revoke the endpoint
+curl -X DELETE \
+  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+Rotation replaces the secret immediately. Update your receiver with the returned secret before relying on later deliveries.
+
+## Management endpoints
+
+| Method | Endpoint | Scope |
+| --- | --- | --- |
+| `GET` | `/v1/webhooks/endpoints` | `api:read` |
+| `POST` | `/v1/webhooks/endpoints` | `api:write` |
+| `DELETE` | `/v1/webhooks/endpoints/:id` | `api:write` |
+| `POST` | `/v1/webhooks/endpoints/:id/rotate-secret` | `api:write` |
+| `POST` | `/v1/webhooks/endpoints/:id/test` | `api:write` |

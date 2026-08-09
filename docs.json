@@ -7,27 +7,34 @@
     "light": "#22C55E",
     "dark": "#16A34A"
   },
+  "logo": {
+    "light": "/assets/icon.svg",
+    "dark": "/assets/icon.svg"
+  },
+  "favicon": "/assets/icon.svg",
+  "icons": {
+    "library": "lucide"
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "search": {
+    "prompt": "Search Transika documentation..."
+  },
   "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
     "tabs": [
       {
         "tab": "Docs",
+        "icon": "book-open",
         "groups": [
           {
             "group": "Getting started",
             "pages": [
-              "home",
-              "getting-started/quickstart",
-              "getting-started/environments",
+              "index",
+              "quickstart",
               "getting-started/authentication",
+              "getting-started/environments",
               "getting-started/responses-and-errors",
               "getting-started/pagination",
               "getting-started/scopes-and-prerequisites"
@@ -38,89 +45,102 @@
             "pages": [
               "guides/beneficiaries",
               "guides/otc-trades",
-              "guides/webhooks",
               "guides/tghs-treasury",
+              "guides/webhooks",
               "guides/sandbox-testing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "icon": "square-terminal",
+        "groups": [
+          {
+            "group": "FX rate",
+            "openapi": "openapi.yaml",
+            "pages": ["GET /fx/rate"]
+          },
+          {
+            "group": "Beneficiaries",
+            "openapi": "openapi.yaml",
+            "pages": [
+              "GET /beneficiaries/networks",
+              "POST /beneficiaries/resolve",
+              "GET /beneficiaries",
+              "POST /beneficiaries",
+              "PATCH /beneficiaries/{id}",
+              "DELETE /beneficiaries/{id}"
+            ]
+          },
+          {
+            "group": "Transactions",
+            "openapi": "openapi.yaml",
+            "pages": ["GET /transactions"]
+          },
+          {
+            "group": "OTC",
+            "openapi": "openapi.yaml",
+            "pages": [
+              "GET /otc/balances",
+              "GET /otc/trades",
+              "GET /otc/trades/{id}",
+              "POST /otc/trades",
+              "POST /otc/trades/{id}/accept",
+              "POST /otc/trades/{id}/funding-proof",
+              "POST /otc/trades/{id}/cancel",
+              "POST /otc/trades/{id}/simulate-ops"
+            ]
+          },
+          {
+            "group": "tGHS",
+            "openapi": "openapi.yaml",
+            "pages": [
+              "GET /tghs",
+              "GET /tghs/activities",
+              "GET /tghs/redemptions",
+              "POST /tghs/payout"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "openapi": "openapi.yaml",
+            "pages": [
+              "GET /webhooks/endpoints",
+              "POST /webhooks/endpoints",
+              "DELETE /webhooks/endpoints/{id}",
+              "POST /webhooks/endpoints/{id}/rotate-secret",
+              "POST /webhooks/endpoints/{id}/test"
             ]
           }
         ]
       }
     ]
   },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "chatgpt",
-      "claude",
-      "cursor"
-    ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
-  },
-  "description": "Merchant API documentation for Ghana beneficiaries, OTC trades, managed tGHS balances, payouts, and webhooks.",
   "api": {
+    "openapi": "openapi.yaml",
     "playground": {
       "display": "interactive",
       "proxy": true
     },
     "examples": {
+      "languages": ["bash", "javascript", "python"],
       "defaults": "all",
-      "languages": [
-        "bash",
-        "javascript",
-        "python"
-      ],
       "prefill": false,
       "autogenerate": true
     },
     "mdx": {
+      "server": "https://sbx-institutional.tran-sika.com/v1",
       "auth": {
         "method": "bearer"
-      },
-      "server": "https://sbx-institutional.tran-sika.com/v1"
+      }
     }
   },
-  "appearance": {
-    "default": "system",
-    "strict": false
-  },
-  "search": {
-    "prompt": "Search Transika documentation..."
+  "contextual": {
+    "options": ["copy", "chatgpt", "claude", "cursor"],
+    "display": "header"
   },
   "seo": {
     "indexing": "navigable"
-  },
-  "icons": {
-    "library": "lucide"
-  },
-  "redirects": [
-    {
-      "source": "/quickstart",
-      "destination": "/getting-started/quickstart",
-      "permanent": true
-    },
-    {
-      "source": "/",
-      "destination": "/home",
-      "permanent": false
-    }
-  ]
+  }
 }

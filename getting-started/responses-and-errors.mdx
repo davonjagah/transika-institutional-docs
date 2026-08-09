@@ -1,6 +1,7 @@
 ---
 title: "Response envelopes and errors"
 description: "Parse Transika success responses and handle API errors consistently."
+keywords: ["API responses", "error handling", "status codes", "response envelope"]
 icon: "braces"
 ---
 
@@ -8,43 +9,105 @@ Transika wraps merchant API responses in a consistent JSON envelope. Use the HTT
 
 ## Success envelope
 
+Successful responses contain `status`, `message`, and `data`:
+
 ```json
 {
   "status": "success",
   "message": "Beneficiary created",
-  "data": { "id": "example-id" }
+  "data": {
+    "id": "example-id"
+  }
 }
 ```
 
+- `status` is `"success"`.
+- `message` is a short operation result.
+- `data` contains the endpoint-specific payload or `null`.
+
 ## Error envelope
+
+Errors use the same top-level shape:
 
 ```json
 {
   "status": "error",
   "message": "Verification is required",
-  "errors": { "code": "kyb_required", "kybStatus": "pending" },
+  "errors": {
+    "code": "kyb_required",
+    "kybStatus": "pending"
+  },
   "data": null
 }
 ```
 
-Use the HTTP status code for control flow. The optional `errors` object may provide field or policy details.
+`errors` is optional and may contain structured details such as an application code or field context. Do not assume it exists on every error.
 
 ## HTTP status codes
 
 | Status | Meaning | Recommended action |
 | --- | --- | --- |
-| `400` | Invalid request context | Correct the request before retrying. |
+| `400` | Invalid request context, including an environment mismatch | Correct the request before retrying. |
 | `401` | Authentication failed | Replace or correct the bearer key. |
-| `403` | Scope, KYB, role, or entitlement blocked the request | Resolve access; do not retry unchanged. |
-| `404` | Resource not found | Check the identifier and environment. |
-| `409` | State conflict | Refresh and reconcile the resource. |
-| `422` | Validation failed | Correct fields using `message` and `errors`. |
-| `5xx` | Server error | Retry safe requests with backoff. |
+| `403` | IP whitelist, scope, KYB, role, or entitlement blocked the request | Resolve access; do not retry unchanged. |
+| `404` | The resource does not exist in this merchant and environment | Check the identifier and environment. |
+| `409` | The request conflicts with current state | Refresh the resource and reconcile state. |
+| `422` | Request validation failed | Correct fields using `message` and `errors`. |
+| `5xx` | Transika could not complete the request | Retry safe requests with backoff and investigate persistent failures. |
+
+An API-key request from an IP outside that key's whitelist returns `403` with:
+
+```json
+{
+  "status": "error",
+  "message": "This API key is not allowed from your IP address",
+  "errors": {
+    "code": "api_key_ip_not_allowed"
+  },
+  "data": null
+}
+```
+
+Update the key's allowed IPs in the merchant dashboard before retrying. Do not attempt to bypass the restriction with `X-Forwarded-For`; Transika accepts forwarded client addresses only from configured infrastructure proxies.
+
+## Client handling
+
+```javascript
+async function transikaRequest(path, options = {}) {
+  const response = await fetch(
+    `https://sbx-institutional.tran-sika.com/sandbox/v1${path}`,
+    {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${process.env.TRANSIKA_API_KEY}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    },
+  );
+
+  const body = await response.json();
+  if (!response.ok) {
+    const error = new Error(body.message ?? "Transika request failed");
+    error.status = response.status;
+    error.details = body.errors;
+    throw error;
+  }
+
+  return body.data;
+}
+```
 
 <Warning>
-  Do not retry write requests blindly. First determine whether the original operation completed, then reconcile using resource status or transaction history.
+  Do not retry write requests blindly. First determine whether the original operation completed, then use the resource status or transaction history to reconcile it.
 </Warning>
 
 ## Logging safely
 
-Redact authorization headers, API keys, webhook signing secrets, funding proof details, and unnecessary personal or financial account data.
+Log the HTTP method, path, status code, your correlation identifier, and non-sensitive resource IDs. Redact:
+
+- `Authorization` headers and API keys.
+- Webhook signing secrets.
+- Full funding proof details.
+- Personal or financial account data that is not required for diagnosis.

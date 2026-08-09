@@ -1,0 +1,112 @@
+---
+title: "Quickstart"
+description: "Authenticate to the Transika sandbox and make your first merchant API request."
+keywords: ["Transika quickstart", "sandbox API", "API key"]
+icon: "rocket"
+---
+
+This quickstart uses the read-only beneficiary network catalog to verify your API key, environment, and response handling without creating a resource.
+
+## Before you begin
+
+You need:
+
+- A Transika merchant account with approved KYB.
+- The `api_access` feature entitlement.
+- A test API key with `api:read` or `api:write`.
+
+<Info>
+  API keys are created in the authenticated merchant dashboard. The full secret is displayed once. Store it in your secret manager and never add it to source control.
+</Info>
+
+## Make a sandbox request
+
+Set the test key in your local shell. The value below is intentionally not a working credential.
+
+```bash
+export TRANSIKA_API_KEY="txk_test_REPLACE_ME"
+```
+
+Call the sandbox beneficiary network endpoint:
+
+<CodeGroup>
+
+```bash cURL
+curl --request GET \
+  --url "https://sbx-institutional.tran-sika.com/sandbox/v1/beneficiaries/networks?kind=momo" \
+  --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
+  --header "Accept: application/json"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  "https://sbx-institutional.tran-sika.com/sandbox/v1/beneficiaries/networks?kind=momo",
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.TRANSIKA_API_KEY}`,
+      Accept: "application/json",
+    },
+  },
+);
+
+const body = await response.json();
+if (!response.ok) throw new Error(body.message);
+console.log(body.data);
+```
+
+```python Python
+import os
+import requests
+
+response = requests.get(
+    "https://sbx-institutional.tran-sika.com/sandbox/v1/beneficiaries/networks?kind=momo",
+    headers={
+        "Authorization": f"Bearer {os.environ['TRANSIKA_API_KEY']}",
+        "Accept": "application/json",
+    },
+    timeout=30,
+)
+response.raise_for_status()
+print(response.json()["data"])
+```
+
+</CodeGroup>
+
+## Read the response
+
+Successful API responses use a common envelope:
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "networks": [
+      {
+        "code": "MTNGH",
+        "label": "MTN Mobile Money",
+        "kind": "momo"
+      }
+    ]
+  }
+}
+```
+
+The exact fields inside `data` depend on the endpoint. Use the endpoint's API reference as the contract.
+
+## Build the next workflow
+
+<Columns cols={2}>
+  <Card title="Add beneficiaries" icon="users" href="/guides/beneficiaries">
+    Resolve and store payout destinations.
+  </Card>
+  <Card title="Test safely" icon="flask-conical" href="/guides/sandbox-testing">
+    Exercise product flows without mixing live data.
+  </Card>
+  <Card title="Handle errors" icon="triangle-alert" href="/getting-started/responses-and-errors">
+    Implement consistent success and failure handling.
+  </Card>
+  <Card title="Review environments" icon="server" href="/getting-started/environments">
+    Match each key prefix to the correct request path.
+  </Card>
+</Columns>
