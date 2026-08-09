@@ -36,38 +36,15 @@ The prefix identifies the key's environment and must match the request path.
 
 A mismatched key and path returns `400`. The request path, not an environment header, selects the environment.
 
-## Create and manage keys
+## Get an API key
 
-API key management requires an authenticated merchant dashboard session and the `api_access` entitlement:
+Create and manage API keys in the authenticated merchant dashboard. The `api_access` entitlement is required.
 
-- `POST /v1/api-keys` creates a key.
-- `GET /v1/api-keys` lists key metadata.
-- `PATCH /v1/api-keys/{id}/allowed-ips` replaces a key's IP whitelist.
-- `DELETE /v1/api-keys/{id}` revokes a key.
-
-Every key requires at least one allowed IPv4 address, IPv6 address, or CIDR range. Transika normalizes bare addresses to `/32` for IPv4 or `/128` for IPv6. Requests from all other source IPs are rejected. Replacing the whitelist takes effect immediately.
-
-The create response displays the full secret once. Copy it to your secret manager immediately; it cannot be retrieved later.
+When creating a key, choose its environment, grant the minimum required scope, and configure the source IP addresses that may use it. Store the secret immediately because it is displayed only once.
 
 <Tip>
   Give each integration and deployment its own key. This limits the impact of rotation and makes usage easier to audit.
 </Tip>
-
-## Rotate a key
-
-<Steps>
-  <Step title="Create a replacement">
-    Create a key in the same environment with the minimum required scope.
-  </Step>
-  <Step title="Deploy the replacement">
-    Update your secret manager and verify requests with the new key.
-  </Step>
-  <Step title="Revoke the old key">
-    Remove the previous key after all instances have switched.
-  </Step>
-</Steps>
-
-Revocation is immediate. Transika cannot recover a lost secret; create a replacement instead.
 
 ## Authentication failures
 
