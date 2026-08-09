@@ -16,14 +16,14 @@ Transika supports bidirectional trades between USDT or USDC and GHS.
 - Your merchant KYB/KYC status must be `approved`.
 - The `otc` feature must be approved. Without it, the API returns `403` with `errors.code: "feature_not_entitled"`.
 - API keys need `api:read` for reads and `api:write` for mutations.
-- Test keys use `/sandbox/v1/*`; live keys use `/v1/*`.
+- Test keys use `/v1/sandbox/*`; live keys use `/v1/*`.
 
 ## Create a trade
 
 This example requests a USDC-to-GHS payout to an existing beneficiary.
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/otc/trades" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -81,7 +81,7 @@ Submitting funding proof does not confirm settlement immediately. Read the trade
 ## Accept and fund a quote
 
 ```javascript
-const baseUrl = `${process.env.TRANSIKA_API_URL}/sandbox/v1`;
+const baseUrl = `${process.env.TRANSIKA_API_URL}/v1/sandbox`;
 const headers = {
   Authorization: `Bearer ${process.env.TRANSIKA_TEST_API_KEY}`,
   "Content-Type": "application/json",
@@ -104,7 +104,7 @@ await fetch(`${baseUrl}/otc/trades/${tradeId}/funding-proof`, {
 For `fiat_to_crypto`, upload a proof image (PNG, JPEG, or WebP) via multipart:
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/funding-proof/upload" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/otc/trades/$TRADE_ID/funding-proof/upload" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -F "proof=@/path/to/receipt.jpg" \
   -F "fiatProofNote=MoMo ref 12345"
@@ -149,7 +149,7 @@ In Test, `simulate-ops` advances a non-terminal trade so you can exercise status
 
 ```bash
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
+  "$TRANSIKA_API_URL/v1/sandbox/otc/trades/$TRADE_ID/simulate-ops" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 

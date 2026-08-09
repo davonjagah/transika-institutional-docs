@@ -17,7 +17,7 @@ info:
 servers:
   - url: https://sbx-institutional.tran-sika.com/v1
     description: Live
-  - url: https://sbx-institutional.tran-sika.com/sandbox/v1
+  - url: https://sbx-institutional.tran-sika.com/v1/sandbox
     description: Sandbox
 tags:
   - name: FX
@@ -477,7 +477,7 @@ paths:
         "500": { $ref: "#/components/responses/InternalError" }
   /otc/trades/{id}/simulate-ops:
     servers:
-      - url: https://sbx-institutional.tran-sika.com/sandbox/v1
+      - url: https://sbx-institutional.tran-sika.com/v1/sandbox
         description: Sandbox only
     parameters:
       - $ref: "#/components/parameters/ResourceId"

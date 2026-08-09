@@ -11,17 +11,17 @@ Transika provides sandbox and live routes on the same API origin. The URL path s
 
 | Environment | Base URL |
 | --- | --- |
-| Sandbox | `https://sbx-institutional.tran-sika.com/sandbox/v1` |
+| Sandbox | `https://sbx-institutional.tran-sika.com/v1/sandbox` |
 | Live | `https://sbx-institutional.tran-sika.com/v1` |
 
-Use a `txk_test_` key with `/sandbox/v1` and a `txk_live_` key with `/v1`. Do not rely on `X-Transika-Environment`; the request path is authoritative.
+Use a `txk_test_` key with `/v1/sandbox` and a `txk_live_` key with `/v1`. Do not rely on `X-Transika-Environment`; the request path is authoritative.
 
 ## Sandbox isolation
 
 Sandbox requests use test-mode records and product behavior. They do not switch to live mode based on request data or headers.
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/sandbox/v1/beneficiaries?page=1&limit=20" \
+curl "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries?page=1&limit=20" \
   --header "Authorization: Bearer ${TRANSIKA_TEST_API_KEY}" \
   --header "Accept: application/json"
 ```
@@ -51,7 +51,7 @@ Keep the origin, path, and secret outside application code:
 
 ```text
 TRANSIKA_API_ORIGIN=https://sbx-institutional.tran-sika.com
-TRANSIKA_API_PATH=/sandbox/v1
+TRANSIKA_API_PATH=/v1/sandbox
 TRANSIKA_API_KEY=txk_test_REPLACE_ME
 ```
 

@@ -16,7 +16,7 @@ Authorization: Bearer txk_test_REPLACE_ME
 ```
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/sandbox/v1/transactions" \
+curl "https://sbx-institutional.tran-sika.com/v1/sandbox/transactions" \
   --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
   --header "Accept: application/json"
 ```
@@ -31,7 +31,7 @@ The prefix identifies the key's environment and must match the request path.
 
 | Key prefix | Environment | Request prefix |
 | --- | --- | --- |
-| `txk_test_` | Sandbox | `/sandbox/v1` |
+| `txk_test_` | Sandbox | `/v1/sandbox` |
 | `txk_live_` | Live | `/v1` |
 
 A mismatched key and path returns `400`. The request path, not an environment header, selects the environment.

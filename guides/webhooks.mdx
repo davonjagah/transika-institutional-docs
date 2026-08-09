@@ -27,7 +27,7 @@ You can subscribe to an exact event, `otc.trade.*`, or `*`. An empty or omitted 
 ## Create an endpoint
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -150,17 +150,17 @@ A delivery succeeds on any `2xx` response. Timeouts, network errors, and non-`2x
 ```bash
 # Queue webhook.test
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/test" \
+  "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints/$ENDPOINT_ID/test" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 
 # Rotate the signing secret
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/rotate-secret" \
+  "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints/$ENDPOINT_ID/rotate-secret" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 
 # Revoke the endpoint
 curl -X DELETE \
-  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID" \
+  "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints/$ENDPOINT_ID" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 

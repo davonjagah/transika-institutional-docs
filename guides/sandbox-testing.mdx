@@ -10,10 +10,10 @@ Use the sandbox to validate your integration without moving funds. Test and Live
 
 | Environment | Route prefix | API key prefix |
 | --- | --- | --- |
-| Test | `/sandbox/v1` | `txk_test_` |
+| Test | `/v1/sandbox` | `txk_test_` |
 | Live | `/v1` | `txk_live_` |
 
-A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/sandbox/v1/*` is also rejected with `400`.
+A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/v1/sandbox/*` is also rejected with `400`.
 
 <Warning>
 Do not use `X-Transika-Environment` to select an API-key environment. The request path and key prefix are authoritative.
@@ -39,7 +39,7 @@ Keep the base URL and key outside source code.
 export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
 export TRANSIKA_TEST_API_KEY="txk_test_REPLACE_LOCALLY"
 
-curl "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
+curl "$TRANSIKA_API_URL/v1/sandbox/otc/trades" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
@@ -58,11 +58,11 @@ IDs from one environment should be treated as unavailable in the other. For exam
 
 ## Test an OTC trade
 
-Create the trade through `/sandbox/v1/otc/trades`, then use the Test-only helper:
+Create the trade through `/v1/sandbox/otc/trades`, then use the Test-only helper:
 
 ```bash
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
+  "$TRANSIKA_API_URL/v1/sandbox/otc/trades/$TRADE_ID/simulate-ops" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
@@ -73,14 +73,14 @@ This action advances a non-terminal test trade through quoting, funding, and set
 Use a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`, then call `simulate-ops`. After the trade settles:
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
 You can test a beneficiary payout with:
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -98,7 +98,7 @@ Create an endpoint with `"environment": "test"` through the sandbox route, then 
 
 ```bash
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/test" \
+  "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints/$ENDPOINT_ID/test" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 

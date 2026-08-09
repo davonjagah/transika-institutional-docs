@@ -15,7 +15,7 @@ Your merchant must have an approved KYB/KYC status. API keys use `api:read` for 
 Beneficiaries are isolated by environment:
 
 - Live requests use `/v1/*` with a `txk_live_` key.
-- Test requests use `/sandbox/v1/*` with a `txk_test_` key.
+- Test requests use `/v1/sandbox/*` with a `txk_test_` key.
 
 A beneficiary created in Test is not available in Live. Defaults are also maintained separately in each environment.
 
@@ -24,7 +24,7 @@ A beneficiary created in Test is not available in Live. Defaults are also mainta
 Fetch the current network catalog instead of hard-coding network codes.
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/beneficiaries/networks?kind=momo" \
+curl "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/networks?kind=momo" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
@@ -35,7 +35,7 @@ Set `kind` to `momo` or `bank`, or omit it to return both. Each beneficiary's `n
 Name enquiry returns the account details available for the supplied network and account number. It does not create or update a beneficiary.
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/beneficiaries/resolve" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/resolve" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -54,7 +54,7 @@ Treat Test name-enquiry results as test data, not production account verificatio
 
 ```javascript
 const response = await fetch(
-  `${process.env.TRANSIKA_API_URL}/sandbox/v1/beneficiaries`,
+  `${process.env.TRANSIKA_API_URL}/v1/sandbox/beneficiaries`,
   {
     method: "POST",
     headers: {
@@ -99,7 +99,7 @@ Changing `accountNumber` or `networkCode` without also supplying a new `accountN
 | `PATCH` | `/v1/beneficiaries/:id` | `api:write` |
 | `DELETE` | `/v1/beneficiaries/:id` | `api:write` |
 
-Use the same paths under `/sandbox/v1` for Test.
+Use the same paths under `/v1/sandbox` for Test.
 
 ## Use a beneficiary
 

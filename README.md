@@ -26,7 +26,7 @@ https://sbx-institutional.tran-sika.com
 ```
 
 - Live requests use `/v1`.
-- Sandbox requests use `/sandbox/v1`.
+- Sandbox requests use `/v1/sandbox`.
 
 Do not commit API keys or other credentials. Use example values such as `txk_test_REPLACE_ME` in documentation.
 

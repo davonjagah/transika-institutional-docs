@@ -34,7 +34,7 @@ Transika manages the settlement process behind this workflow; your integration u
 ## Read your balance
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
@@ -47,7 +47,7 @@ import os
 import requests
 
 response = requests.get(
-    f"{os.environ['TRANSIKA_API_URL']}/sandbox/v1/tghs/activities",
+    f"{os.environ['TRANSIKA_API_URL']}/v1/sandbox/tghs/activities",
     headers={"Authorization": f"Bearer {os.environ['TRANSIKA_TEST_API_KEY']}"},
     params={"kind": "payout", "status": "succeeded", "page": 1, "limit": 20},
 )
@@ -71,7 +71,7 @@ Activity statuses are:
 Create the Ghana beneficiary in the same environment before initiating the payout.
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -120,7 +120,7 @@ Payout requests do not currently accept an idempotency key. If a request times o
 | `POST` | `/v1/tghs/redemptions/{id}/refresh` | `api:read` |
 | `POST` | `/v1/tghs/payout` | `api:write` |
 
-Use `/sandbox/v1/tghs*` with a Test API key.
+Use `/v1/sandbox/tghs*` with a Test API key.
 
 ## Environment behavior
 
