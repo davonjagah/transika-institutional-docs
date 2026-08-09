@@ -1,13 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "theme": "palm",
+  "name": "Transika",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#15803D",
+    "light": "#22C55E",
+    "dark": "#16A34A"
   },
-  "favicon": "/favicon.svg",
   "navigation": {
     "pages": [
       {
@@ -18,24 +17,35 @@
         ]
       }
     ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "tabs": [
+      {
+        "tab": "Docs",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "home",
+              "getting-started/quickstart",
+              "getting-started/environments",
+              "getting-started/authentication",
+              "getting-started/responses-and-errors",
+              "getting-started/pagination",
+              "getting-started/scopes-and-prerequisites"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/beneficiaries",
+              "guides/otc-trades",
+              "guides/webhooks",
+              "guides/tghs-treasury",
+              "guides/sandbox-testing"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "navbar": {
     "links": [
@@ -53,13 +63,9 @@
   "contextual": {
     "options": [
       "copy",
-      "view",
       "chatgpt",
       "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
+      "cursor"
     ]
   },
   "footer": {
@@ -68,5 +74,53 @@
       "github": "https://github.com/mintlify",
       "linkedin": "https://linkedin.com/company/mintlify"
     }
-  }
+  },
+  "description": "Merchant API documentation for Ghana beneficiaries, OTC trades, managed tGHS balances, payouts, and webhooks.",
+  "api": {
+    "playground": {
+      "display": "interactive",
+      "proxy": true
+    },
+    "examples": {
+      "defaults": "all",
+      "languages": [
+        "bash",
+        "javascript",
+        "python"
+      ],
+      "prefill": false,
+      "autogenerate": true
+    },
+    "mdx": {
+      "auth": {
+        "method": "bearer"
+      },
+      "server": "https://sbx-institutional.tran-sika.com/v1"
+    }
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "search": {
+    "prompt": "Search Transika documentation..."
+  },
+  "seo": {
+    "indexing": "navigable"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "redirects": [
+    {
+      "source": "/quickstart",
+      "destination": "/getting-started/quickstart",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "destination": "/home",
+      "permanent": false
+    }
+  ]
 }

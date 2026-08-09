@@ -1,0 +1,50 @@
+---
+title: "Response envelopes and errors"
+description: "Parse Transika success responses and handle API errors consistently."
+icon: "braces"
+---
+
+Transika wraps merchant API responses in a consistent JSON envelope. Use the HTTP status code for control flow and the body for context.
+
+## Success envelope
+
+```json
+{
+  "status": "success",
+  "message": "Beneficiary created",
+  "data": { "id": "example-id" }
+}
+```
+
+## Error envelope
+
+```json
+{
+  "status": "error",
+  "message": "Verification is required",
+  "errors": { "code": "kyb_required", "kybStatus": "pending" },
+  "data": null
+}
+```
+
+Use the HTTP status code for control flow. The optional `errors` object may provide field or policy details.
+
+## HTTP status codes
+
+| Status | Meaning | Recommended action |
+| --- | --- | --- |
+| `400` | Invalid request context | Correct the request before retrying. |
+| `401` | Authentication failed | Replace or correct the bearer key. |
+| `403` | Scope, KYB, role, or entitlement blocked the request | Resolve access; do not retry unchanged. |
+| `404` | Resource not found | Check the identifier and environment. |
+| `409` | State conflict | Refresh and reconcile the resource. |
+| `422` | Validation failed | Correct fields using `message` and `errors`. |
+| `5xx` | Server error | Retry safe requests with backoff. |
+
+<Warning>
+  Do not retry write requests blindly. First determine whether the original operation completed, then reconcile using resource status or transaction history.
+</Warning>
+
+## Logging safely
+
+Redact authorization headers, API keys, webhook signing secrets, funding proof details, and unnecessary personal or financial account data.

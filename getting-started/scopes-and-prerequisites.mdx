@@ -1,0 +1,63 @@
+---
+title: "Scopes and prerequisites"
+description: "Understand Transika API scopes, KYB approval, and product feature prerequisites."
+keywords: ["API scopes", "KYB", "entitlements", "merchant verification"]
+icon: "shield-check"
+---
+
+An API key is necessary but not sufficient for every request. Transika evaluates the key's environment and scope, the merchant's KYB status, and product feature entitlements.
+
+## API key scopes
+
+New keys support two scopes:
+
+| Scope | Access |
+| --- | --- |
+| `api:read` | Read merchant business resources. |
+| `api:write` | Read and mutate merchant business resources. |
+
+`api:write` implies read access. Use `api:read` for reporting, reconciliation, and other integrations that never create or update resources.
+
+## KYB status
+
+Product APIs require the merchant's KYB status to be `approved`.
+
+| Status | API effect |
+| --- | --- |
+| `pending` | Product access remains blocked while review is in progress. |
+| `approved` | Product access is available, subject to scopes and entitlements. |
+| `rejected` | Product access is blocked; resolve the review outcome in the dashboard. |
+| `suspended` | Product access is blocked until Transika restores the account. |
+
+A KYB block returns `403` with `errors.code` set to `kyb_required` when structured details are available.
+
+## Feature entitlements
+
+Some routes require both core API access and a product entitlement. For example, an OTC request requires the merchant to have access to the API and the OTC product.
+
+<Info>
+  A key scope never grants a product that is not enabled for the merchant. Likewise, a product entitlement does not override a read-only key on a write request.
+</Info>
+
+## Access checklist
+
+Before integrating a product, confirm:
+
+1. The merchant KYB status is `approved`.
+2. The `api_access` feature is enabled.
+3. The product feature required by the route is enabled.
+4. The key belongs to the same environment as the request path.
+5. The key has `api:read` for reads or `api:write` for mutations.
+
+## Diagnose a `403`
+
+Read the error `message` and optional `errors.code`. Then check, in order:
+
+1. The key's scopes.
+2. The merchant's KYB status.
+3. Core API access.
+4. The product entitlement for the requested route.
+
+<Card title="Authentication and API keys" icon="key-round" href="/getting-started/authentication">
+  Review bearer headers, environment-bound key prefixes, and safe rotation.
+</Card>
