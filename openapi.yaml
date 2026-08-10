@@ -362,11 +362,6 @@ paths:
           schema:
             type: string
             enum: [payout, mint]
-        - name: customerId
-          in: query
-          description: Accepted for compatibility; current treasury rows have no customer association.
-          schema:
-            type: string
         - name: reference
           in: query
           description: Exact match on the merchant or system payment reference.
@@ -400,8 +395,6 @@ paths:
                       paymentMode: momo
                       statusComposite: succeeded
                       payoutStatus: succeeded
-                      customerId: null
-                      customerName: null
                       createdAt: "2026-08-08T16:29:38.770Z"
                       updatedAt: "2026-08-08T16:29:38.770Z"
                     - id: "53c46e50-4fda-445d-94a1-3cd7fb04d3ba"
@@ -418,8 +411,6 @@ paths:
                       paymentMode: null
                       statusComposite: succeeded
                       payoutStatus: succeeded
-                      customerId: null
-                      customerName: null
                       createdAt: "2026-08-08T16:30:29.106Z"
                       updatedAt: "2026-08-08T16:30:29.106Z"
                   total: 16
@@ -1200,8 +1191,6 @@ components:
           paymentMode,
           statusComposite,
           payoutStatus,
-          customerId,
-          customerName,
           createdAt,
           updatedAt,
         ]
@@ -1226,8 +1215,6 @@ components:
         paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
         statusComposite: { $ref: "#/components/schemas/TghsActivityStatus" }
         payoutStatus: { $ref: "#/components/schemas/TghsActivityStatus" }
-        customerId: { type: [string, "null"] }
-        customerName: { type: [string, "null"] }
         createdAt: { $ref: "#/components/schemas/DateTime" }
         updatedAt: { $ref: "#/components/schemas/DateTime" }
     TransactionListResponse:
