@@ -84,7 +84,7 @@ paths:
 
         **Test** returns a simulated `accountName` (`TEST {networkCode} {last4}`) so you can integrate without a live rail call.
 
-        **Live** queries the Ghana payout rail for MoMo and bank accounts and returns the registered holder name. Unverifiable accounts fail with `422` or `502`; Transika does not invent a name.
+        **Live** queries the Ghana payout rail for MoMo and bank accounts and returns the registered holder name. Unverifiable accounts or rail failures return `422` or `502` with message `Name enquiry failed`; Transika does not invent a name.
       requestBody:
         required: true
         content:

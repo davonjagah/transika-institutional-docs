@@ -95,7 +95,7 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/resolve" \
 }
 ```
 
-On Live, an unknown, unregistered, or unverifiable account returns an error (`422` or `502`) with the rail message — Transika does not invent a placeholder name. Handle that before creating the beneficiary.
+On Live, an unknown, unregistered, unverifiable, or rail-auth failure returns an error (`422` or `502`) with message `Name enquiry failed` — Transika does not invent a placeholder name. Handle that before creating the beneficiary.
 
 <Note>
 Prefer Ghana MoMo numbers in local `0XXXXXXXXX` form (10 digits). Do not treat Test `accountName` values as real KYC.
