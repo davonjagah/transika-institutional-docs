@@ -1,28 +1,27 @@
 ---
 title: "Webhooks"
-description: "Receive signed OTC lifecycle events from Transika and operate webhook endpoints safely."
-keywords: ["webhooks", "HMAC", "signature verification", "OTC events", "event delivery"]
+description: "Receive signed tGHS payout lifecycle events on your HTTPS endpoint."
+keywords: ["webhooks", "HMAC", "signature verification", "tGHS payout", "event delivery"]
 ---
 
-Webhooks send selected merchant events to your HTTPS endpoint. Endpoint management requires approved KYB/KYC, the `api_access` feature, and `api:read` or `api:write`.
+Webhooks deliver **tGHS payout lifecycle** events to your HTTPS endpoint. Endpoint management requires approved KYB/KYC, the `api_access` feature, and `api:read` or `api:write`.
+
+OTC desk activity runs in the Transika dashboard and is notified by email and in-app alerts. It is not delivered over merchant HTTP webhooks.
 
 ## Events currently delivered
 
-Merchant HTTP webhooks currently deliver only:
+| Event | When |
+| --- | --- |
+| `webhook.test` | You call the test endpoint |
+| `tghs.payout.created` | Payout / redemption accepted |
+| `tghs.payout.burn_submitted` | Burn submitted (real chain in Live; simulated in Test) |
+| `tghs.payout.burn_confirmed` | Burn confirmed |
+| `tghs.payout.payout_pending` | Ghana disbursement started |
+| `tghs.payout.completed` | Beneficiary payout succeeded |
+| `tghs.payout.burn_failed` | Burn failed |
+| `tghs.payout.payout_failed` | Ghana payout failed after burn |
 
-- `webhook.test`
-- `otc.trade.created`
-- `otc.trade.quoted`
-- `otc.trade.accepted`
-- `otc.trade.funding_submitted`
-- `otc.trade.funded`
-- `otc.trade.settled`
-- `otc.trade.settle_failed`
-- `otc.trade.expired`
-- `otc.trade.cancelled`
-- `otc.trade.rejected`
-
-You can subscribe to an exact event, `otc.trade.*`, or `*`. An empty or omitted `events` array receives all events that are actually emitted to merchant HTTP webhooks.
+Subscribe with `tghs.payout.*`, an exact event name, or `*`. An empty or omitted `events` array receives all events that are emitted to merchant HTTP webhooks. Test and Live use the **same event names and redemption-shaped `data.payout`**; create separate endpoints (or use environment) for each mode.
 
 ## Create an endpoint
 
@@ -31,35 +30,69 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://example.com/webhooks/transika",
-    "description": "Test OTC events",
+    "url": "https://hooks.merchant.example/transika/payouts",
+    "description": "tGHS payout lifecycle",
     "environment": "test",
-    "events": ["otc.trade.*", "webhook.test"]
+    "events": ["tghs.payout.*", "webhook.test"]
   }'
 ```
 
-The create response includes `signingSecret`. Copy it immediately and store it in your secret manager.
+Example created endpoint (`signingSecret` returned once):
+
+```json
+{
+  "status": "success",
+  "message": "Webhook endpoint created",
+  "data": {
+    "id": "ea503d42-a37e-4667-8ae9-9b006a5fd021",
+    "url": "https://hooks.merchant.example/transika/payouts",
+    "description": "tGHS payout lifecycle",
+    "enabled": true,
+    "environment": "test",
+    "events": ["tghs.payout.*", "webhook.test"],
+    "secretPrefix": "whsec__fl-2n",
+    "signingSecret": "whsec_REPLACE_WITH_ONE_TIME_SECRET",
+    "createdAt": "2026-08-08T16:37:17.870Z"
+  }
+}
+```
+
+Copy `signingSecret` immediately and store it in your secret manager.
 
 <Warning>
 The full signing secret is visible only in the create response and immediately after rotation. Endpoint listings return only `secretPrefix`. If you lose the secret, rotate it.
 </Warning>
 
-Endpoints are environment-specific. A Test endpoint receives Test OTC events; a Live endpoint receives Live OTC events.
+Endpoints are environment-specific. A Test endpoint receives Test payout events; a Live endpoint receives Live redemption events.
 
 ## Request format
 
-Each delivery is an HTTP `POST` with a JSON body:
+Each delivery is an HTTP `POST` with a JSON body. Example (`completed`):
 
 ```json
 {
-  "id": "EVENT_ID",
-  "type": "otc.trade.quoted",
-  "created": "2026-08-08T12:00:00.000Z",
+  "id": "3f2c1a90-7b4e-4d1a-9c8f-2a1b0c9d8e7f",
+  "type": "tghs.payout.completed",
+  "created": "2026-08-09T12:48:22.110Z",
   "data": {
-    "trade": {
-      "id": "TRADE_ID",
-      "status": "quoted",
-      "environment": "test"
+    "payout": {
+      "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+      "environment": "live",
+      "network": "base",
+      "amount": "168000.00",
+      "beneficiaryId": "6cd84483-4088-4579-a2e1-1d872ea3e22e",
+      "reference": "INV-168000",
+      "beneficiaryLabel": "MTNGH 9460",
+      "paymentMode": "momo",
+      "payoutAccountNumber": "0552479460",
+      "status": "completed",
+      "burnTxHash": "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+      "burnExplorerUrl": "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+      "failureReason": null,
+      "burnConfirmedAt": "2026-08-09T12:48:01.727Z",
+      "completedAt": "2026-08-09T12:48:22.104Z",
+      "createdAt": "2026-08-09T12:47:43.774Z",
+      "updatedAt": "2026-08-09T12:48:22.110Z"
     }
   }
 }
@@ -69,13 +102,13 @@ Headers include:
 
 ```text
 Content-Type: application/json
-X-Transika-Event: otc.trade.quoted
-X-Transika-Delivery: DELIVERY_ID
+X-Transika-Event: tghs.payout.completed
+X-Transika-Delivery: 9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d
 X-Transika-Timestamp: 1786190400
 X-Transika-Signature: t=1786190400,v1=HEX_HMAC
 ```
 
-Use the event `id` or delivery ID for idempotency. Your handler should return any `2xx` response only after it has durably accepted the event.
+Use the event `id` or `X-Transika-Delivery` value for idempotency. Your handler should return any `2xx` response only after it has durably accepted the event.
 
 ## Verify signatures
 
@@ -164,7 +197,7 @@ curl -X DELETE \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-Rotation replaces the secret immediately. Update your receiver with the returned secret before relying on later deliveries.
+Rotation replaces the secret immediately. Update your receiver with the returned `signingSecret` before relying on later deliveries.
 
 ## Management endpoints
 

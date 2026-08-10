@@ -1,11 +1,11 @@
 ---
 title: "Transika developer documentation"
-description: "Integrate Transika's merchant API for Ghana beneficiaries, OTC trades, managed tGHS balances, payouts, and webhooks."
-keywords: ["Transika API", "merchant API", "OTC", "tGHS", "Ghana payouts"]
+description: "Integrate Transika's merchant API for Ghana beneficiaries, managed tGHS balances, payouts, and webhooks."
+keywords: ["Transika API", "merchant API", "tGHS", "Ghana payouts"]
 icon: "house"
 ---
 
-Use the Transika Merchant API to exchange supported stablecoins and Ghana cedis, hold a managed GHS treasury balance, and pay Ghana mobile money or bank beneficiaries.
+Use the Transika Merchant API to hold a managed, GHS-denominated tGHS treasury balance and pay Ghana mobile money or bank beneficiaries. OTC trading runs in the merchant dashboard; this API focuses on beneficiaries, tGHS treasury, transactions, and webhooks.
 
 <Columns cols={2}>
   <Card title="Make your first request" icon="rocket" href="/quickstart">
@@ -25,11 +25,10 @@ Use the Transika Merchant API to exchange supported stablecoins and Ghana cedis,
 ## What you can build
 
 - Maintain mobile money and bank beneficiaries.
-- Request, accept, and fund OTC trades.
-- Settle eligible trades into a managed tGHS balance.
-- Pay Ghana beneficiaries from your tGHS balance.
+- Read managed tGHS balances and on-chain wallet proof links.
+- Pay Ghana beneficiaries from your tGHS balance with optional merchant references and idempotency keys.
 - Reconcile activity from the transaction ledger.
-- Receive signed OTC lifecycle events through webhooks.
+- Receive signed tGHS payout lifecycle events through webhooks.
 
 ## Integration model
 

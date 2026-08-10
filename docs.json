@@ -44,7 +44,6 @@
             "group": "Guides",
             "pages": [
               "guides/beneficiaries",
-              "guides/otc-trades",
               "guides/tghs-treasury",
               "guides/webhooks",
               "guides/sandbox-testing"
@@ -56,11 +55,6 @@
         "tab": "API reference",
         "icon": "square-terminal",
         "groups": [
-          {
-            "group": "FX rate",
-            "openapi": "openapi.yaml",
-            "pages": ["GET /fx/rate"]
-          },
           {
             "group": "Beneficiaries",
             "openapi": "openapi.yaml",
@@ -79,26 +73,14 @@
             "pages": ["GET /transactions"]
           },
           {
-            "group": "OTC",
-            "openapi": "openapi.yaml",
-            "pages": [
-              "GET /otc/balances",
-              "GET /otc/trades",
-              "GET /otc/trades/{id}",
-              "POST /otc/trades",
-              "POST /otc/trades/{id}/accept",
-              "POST /otc/trades/{id}/funding-proof",
-              "POST /otc/trades/{id}/cancel",
-              "POST /otc/trades/{id}/simulate-ops"
-            ]
-          },
-          {
             "group": "tGHS",
             "openapi": "openapi.yaml",
             "pages": [
               "GET /tghs",
               "GET /tghs/activities",
               "GET /tghs/redemptions",
+              "GET /tghs/redemptions/{id}",
+              "POST /tghs/redemptions/{id}/refresh",
               "POST /tghs/payout"
             ]
           },

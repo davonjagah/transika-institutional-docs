@@ -33,7 +33,7 @@ A KYB block returns `403` with `errors.code` set to `kyb_required` when structur
 
 ## Feature entitlements
 
-Some routes require both core API access and a product entitlement. For example, an OTC request requires the merchant to have access to the API and the OTC product.
+Some routes require both core API access and a product feature entitlement. For example, tGHS routes require the merchant to have access to the API and the `otc` product feature.
 
 <Info>
   A key scope never grants a product that is not enabled for the merchant. Likewise, a product entitlement does not override a read-only key on a write request.

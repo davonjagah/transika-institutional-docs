@@ -17,7 +17,7 @@ List endpoints use page-based pagination. Request one page at a time and preserv
   Number of records to return. Transika clamps the value to the range `1` through `100`.
 </ParamField>
 
-Some endpoints also accept filters such as `q`, `status`, `customerId`, or an endpoint-specific type. Consult the API reference before sending a filter.
+Some endpoints also accept filters such as `q`, `status`, `reference`, or an endpoint-specific type. Consult the API reference before sending a filter.
 
 ## Request a page
 
@@ -52,7 +52,11 @@ async function* listPages(path) {
 
     yield body.data;
 
-    const records = body.data.items ?? body.data.data ?? [];
+    const records =
+      body.data.transactions ??
+      body.data.activities ??
+      body.data.beneficiaries ??
+      [];
     if (records.length < limit) break;
   }
 }
