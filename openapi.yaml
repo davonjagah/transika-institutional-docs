@@ -3,31 +3,28 @@ info:
   title: Transika Merchant API
   version: 1.0.0
   description: |
-    Merchant-facing contract for Transika treasury, beneficiary, OTC, tGHS,
-    transaction, and webhook products.
+    Merchant-facing contract for Transika treasury, beneficiary, tGHS,
+    transaction, and webhook products. OTC trading is available in the
+    merchant dashboard and is not part of this public API surface.
 
     Authenticate with a live (`txk_live_...`) key on the live server or a test
     (`txk_test_...`) key on the sandbox server. Keys and routes cannot be mixed.
-    Except for the public FX rate, merchants must have approved KYB/KYC.
-    Feature-gated endpoints additionally require the named active entitlement.
-    Read operations require `api:read`; write operations require `api:write`,
-    which also grants read access. Every API key is restricted to its configured
-    IPv4/IPv6 addresses or CIDR ranges; nonmatching source IPs receive `403`
-    with `errors.code` set to `api_key_ip_not_allowed`.
+    Merchants must have approved KYB/KYC. Feature-gated endpoints additionally
+    require the named active entitlement. Read operations require `api:read`;
+    write operations require `api:write`, which also grants read access. Every
+    API key is restricted to its configured IPv4/IPv6 addresses or CIDR ranges;
+    nonmatching source IPs receive `403` with `errors.code` set to
+    `api_key_ip_not_allowed`.
 servers:
   - url: https://sbx-institutional.tran-sika.com/v1
-    description: Live
-  - url: https://sbx-institutional.tran-sika.com/sandbox/v1
-    description: Sandbox
+    description: Live path (`txk_live_` keys). Origin is the current institutional host; confirm the production origin in your dashboard at cutover.
+  - url: https://sbx-institutional.tran-sika.com/v1/sandbox
+    description: Sandbox / Test path (`txk_test_` keys)
 tags:
-  - name: FX
-    description: Public foreign-exchange reference rates.
   - name: Beneficiaries
     description: Ghana payout account discovery and storage.
   - name: Transactions
     description: Unified merchant treasury transaction history.
-  - name: OTC
-    description: Over-the-counter stablecoin and fiat trades.
   - name: tGHS
     description: Managed GHS balances, activity, and Ghana beneficiary payouts.
   - name: Webhooks
@@ -35,29 +32,6 @@ tags:
 security:
   - bearerAuth: []
 paths:
-  /fx/rate:
-    get:
-      tags: [FX]
-      operationId: getFxRate
-      summary: Get the current GHS/USDT rate
-      description: Public and unauthenticated.
-      security: []
-      responses:
-        "200":
-          description: Current rate.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FxRateResponse"
-              example:
-                status: success
-                message: success
-                data:
-                  ghsPerUsdt: 15.5
-                  updatedAt: "2026-08-08T12:00:00.000Z"
-                  updatedByName: null
-        "500":
-          $ref: "#/components/responses/InternalError"
   /beneficiaries/networks:
     get:
       tags: [Beneficiaries]
@@ -77,6 +51,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NetworkListResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  networks:
+                    - code: MTNGH
+                      label: "MTN Mobile Money"
+                      kind: momo
+                    - code: TCELGH
+                      label: "Telecel Cash"
+                      kind: momo
+                    - code: ATGH
+                      label: "AirtelTigo Money"
+                      kind: momo
+                    - code: OMNIBSIC
+                      label: "OmniBSIC Bank"
+                      kind: bank
+                    - code: GCBGH
+                      label: "GCB Bank"
+                      kind: bank
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -85,7 +79,12 @@ paths:
       tags: [Beneficiaries]
       operationId: resolveBeneficiaryAccount
       summary: Resolve a Ghana payout account
-      description: Name enquiry only; does not save a beneficiary. Requires approved KYB/KYC and `api:read`.
+      description: |
+        Name enquiry only — does not save a beneficiary. Requires approved KYB/KYC and `api:read`.
+
+        **Test** returns a simulated `accountName` (`TEST {networkCode} {last4}`) so you can integrate without a live rail call.
+
+        **Live** queries the Ghana payout rail for MoMo and bank accounts and returns the registered holder name. Unverifiable accounts fail with `422` or `502`; Transika does not invent a name.
       requestBody:
         required: true
         content:
@@ -94,7 +93,7 @@ paths:
               $ref: "#/components/schemas/ResolveBeneficiaryRequest"
             example:
               networkCode: MTNGH
-              accountNumber: "233241234567"
+              accountNumber: "0552479460"
       responses:
         "201":
           description: Resolved account.
@@ -102,33 +101,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolvedBeneficiaryResponse"
+              examples:
+                test:
+                  summary: Test (simulated)
+                  value:
+                    status: success
+                    message: success
+                    data:
+                      accountName: "TEST MTNGH 9460"
+                      accountType: momo
+                      networkCode: MTNGH
+                      networkLabel: "MTN Mobile Money"
+                live:
+                  summary: Live (rail-verified)
+                  value:
+                    status: success
+                    message: success
+                    data:
+                      accountName: "JOSEPH ANNOH"
+                      accountType: momo
+                      networkCode: MTNGH
+                      networkLabel: "MTN Mobile Money"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "502":
+          description: Upstream Ghana payout rail unavailable or dependency failure during Live resolve.
       x-codeSamples:
         - lang: curl
           source: |
             curl -X POST "$TRANSIKA_BASE_URL/beneficiaries/resolve" \
               -H "Authorization: Bearer $TRANSIKA_API_KEY" \
               -H "Content-Type: application/json" \
-              -d '{"networkCode":"MTNGH","accountNumber":"233241234567"}'
+              -d '{"networkCode":"MTNGH","accountNumber":"0552479460"}'
   /beneficiaries:
     get:
       tags: [Beneficiaries]
       operationId: listBeneficiaries
       summary: List beneficiaries
-      description: Requires approved KYB/KYC and `api:read`.
+      description: |
+        Requires approved KYB/KYC and `api:read`. Filter with `referenceId` for an
+        exact lookup by your correlation id (returns that beneficiary or `404`).
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Search"
-        - name: customerId
+        - name: referenceId
           in: query
+          description: Exact merchant correlation id (unique per environment).
           schema:
             type: string
-            maxLength: 36
+            maxLength: 64
       responses:
         "200":
           description: Paginated beneficiaries.
@@ -136,9 +161,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BeneficiaryListResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  beneficiaries:
+                    - id: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+                      environment: test
+                      label: "TEST MTNGH 9460"
+                      accountType: momo
+                      accountNumber: "0552479460"
+                      networkCode: MTNGH
+                      accountName: "TEST MTNGH 9460"
+                      bankName: null
+                      referenceId: "user_42_momo"
+                      createdAt: "2026-08-08T16:29:18.628Z"
+                      updatedAt: "2026-08-08T16:29:18.628Z"
+                    - id: "0a06b04f-6b71-4df3-a9ce-4c35f38d7582"
+                      environment: test
+                      label: "TEST OMNIBSIC 8888"
+                      accountType: bank
+                      accountNumber: "067677767788888888"
+                      networkCode: OMNIBSIC
+                      accountName: "TEST OMNIBSIC 8888"
+                      bankName: "OmniBSIC Bank"
+                      referenceId: "user_42_bank"
+                      createdAt: "2026-08-06T14:47:53.202Z"
+                      updatedAt: "2026-08-06T14:47:53.202Z"
+                  total: 5
+                  page: 1
+                  limit: 20
+                  environment: test
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
     post:
       tags: [Beneficiaries]
@@ -151,6 +208,26 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BeneficiaryInput"
+            examples:
+              momo:
+                summary: Mobile money
+                value:
+                  label: "TEST MTNGH 9460"
+                  accountType: momo
+                  accountNumber: "0552479460"
+                  networkCode: MTNGH
+                  accountName: "TEST MTNGH 9460"
+                  referenceId: "user_42_momo"
+              bank:
+                summary: Bank
+                value:
+                  label: "TEST OMNIBSIC 8888"
+                  accountType: bank
+                  accountNumber: "067677767788888888"
+                  networkCode: OMNIBSIC
+                  accountName: "TEST OMNIBSIC 8888"
+                  bankName: "OmniBSIC Bank"
+                  referenceId: "user_42_bank"
       responses:
         "201":
           description: Beneficiary created.
@@ -158,6 +235,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BeneficiaryResponse"
+              examples:
+                momo:
+                  summary: Mobile money
+                  value:
+                    status: success
+                    message: Beneficiary created
+                    data:
+                      id: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+                      environment: test
+                      label: "TEST MTNGH 9460"
+                      accountType: momo
+                      accountNumber: "0552479460"
+                      networkCode: MTNGH
+                      accountName: "TEST MTNGH 9460"
+                      bankName: null
+                      referenceId: "user_42_momo"
+                      createdAt: "2026-08-08T16:29:18.628Z"
+                      updatedAt: "2026-08-08T16:29:18.628Z"
+                bank:
+                  summary: Bank
+                  value:
+                    status: success
+                    message: Beneficiary created
+                    data:
+                      id: "a12cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+                      environment: test
+                      label: "TEST OMNIBSIC 8888"
+                      accountType: bank
+                      accountNumber: "067677767788888888"
+                      networkCode: OMNIBSIC
+                      accountName: "TEST OMNIBSIC 8888"
+                      bankName: "OmniBSIC Bank"
+                      referenceId: "user_42_bank"
+                      createdAt: "2026-08-08T16:29:18.628Z"
+                      updatedAt: "2026-08-08T16:29:18.628Z"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -167,11 +279,30 @@ paths:
   /beneficiaries/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Beneficiaries]
+      operationId: getBeneficiary
+      summary: Get a beneficiary by id
+      description: Requires approved KYB/KYC and `api:read`.
+      responses:
+        "200":
+          description: Beneficiary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeneficiaryResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
     patch:
       tags: [Beneficiaries]
       operationId: updateBeneficiary
-      summary: Update a beneficiary
-      description: Requires approved KYB/KYC and `api:write`.
+      summary: Update beneficiary metadata
+      description: |
+        Requires approved KYB/KYC and `api:write`. Only `label` and `referenceId`
+        may change. Account type, number, network, bank name, and resolved name are
+        immutable — delete and create a new beneficiary after resolve.
       requestBody:
         required: true
         content:
@@ -214,7 +345,10 @@ paths:
       tags: [Transactions]
       operationId: listTransactions
       summary: List tGHS treasury transactions
-      description: Requires approved KYB/KYC and `api:read`.
+      description: |
+        Requires approved KYB/KYC and `api:read`. Returns Test treasury ledger
+        rows (`tghs_payout` / `tghs_mint`). Filter with exact `reference`.
+        For Live Ghana payout status, use `GET /tghs/redemptions` instead.
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
@@ -228,11 +362,13 @@ paths:
           schema:
             type: string
             enum: [payout, mint]
-        - name: customerId
+        - name: reference
           in: query
-          description: Accepted for compatibility; current treasury rows have no customer association.
+          description: Exact match on the merchant or system payment reference.
           schema:
             type: string
+            minLength: 1
+            maxLength: 64
       responses:
         "200":
           description: Paginated treasury transactions.
@@ -240,217 +376,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  transactions:
+                    - id: "4e2bef6a-1def-4201-9f60-560d67521518"
+                      tradeId: null
+                      type: tghs_payout
+                      source: treasury
+                      environment: test
+                      ghsAmount: null
+                      usdtAmount: null
+                      tghsAmount: "10000.00"
+                      label: "TEST MTNGH 9460"
+                      reference: "INV-10000-9460"
+                      payeeName: "TEST MTNGH 9460"
+                      paymentMode: momo
+                      statusComposite: succeeded
+                      payoutStatus: succeeded
+                      createdAt: "2026-08-08T16:29:38.770Z"
+                      updatedAt: "2026-08-08T16:29:38.770Z"
+                    - id: "53c46e50-4fda-445d-94a1-3cd7fb04d3ba"
+                      tradeId: "09ee5cf7-31ae-4e90-84bc-4dcb67d060e3"
+                      type: tghs_mint
+                      source: treasury
+                      environment: test
+                      ghsAmount: null
+                      usdtAmount: null
+                      tghsAmount: "1550.00"
+                      label: "Simulated desk mint"
+                      reference: "0x9faf0b65b2adfcca71afd4eee0b2261d17a00560ffa1721ca219acd1cb87d667"
+                      payeeName: null
+                      paymentMode: null
+                      statusComposite: succeeded
+                      payoutStatus: succeeded
+                      createdAt: "2026-08-08T16:30:29.106Z"
+                      updatedAt: "2026-08-08T16:30:29.106Z"
+                  total: 16
+                  page: 1
+                  limit: 20
+                  source: treasury
+                  environment: test
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/balances:
-    get:
-      tags: [OTC]
-      operationId: listOtcBalances
-      summary: List managed OTC balances
-      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
-      responses:
-        "200":
-          description: Managed balances.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcBalanceListResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades:
-    get:
-      tags: [OTC]
-      operationId: listOtcTrades
-      summary: List OTC trades
-      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Limit"
-        - name: status
-          in: query
-          schema:
-            $ref: "#/components/schemas/OtcTradeStatus"
-      responses:
-        "200":
-          description: Paginated trades.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeListResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "500": { $ref: "#/components/responses/InternalError" }
-    post:
-      tags: [OTC]
-      operationId: createOtcTrade
-      summary: Create an OTC trade
-      description: |
-        Requires approved KYB/KYC, active `otc` entitlement, and `api:write`.
-        For `crypto_to_fiat`, `assetIn` must be USDT/USDC; `sendingWallet`,
-        `network`, and one amount are required. Fiat settlement also requires a
-        beneficiary. For `fiat_to_crypto`, `assetOut` must be USDT/USDC;
-        `receiveWallet` and one amount are required.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateOtcTradeRequest"
-            examples:
-              cryptoToManagedTghs:
-                value:
-                  direction: crypto_to_fiat
-                  settleMode: managed_tghs
-                  amountIn: 1000
-                  assetIn: USDC
-                  network: base
-                  sendingWallet: "0x1111111111111111111111111111111111111111"
-              fiatToCrypto:
-                value:
-                  direction: fiat_to_crypto
-                  amountIn: 15500
-                  assetOut: USDT
-                  receiveWallet: "0x2222222222222222222222222222222222222222"
-      responses:
-        "201":
-          description: Draft trade created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades/{id}:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    get:
-      tags: [OTC]
-      operationId: getOtcTrade
-      summary: Get an OTC trade
-      description: Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
-      responses:
-        "200":
-          description: Trade.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades/{id}/accept:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    post:
-      tags: [OTC]
-      operationId: acceptOtcTrade
-      summary: Accept an OTC quote
-      description: Requires a non-expired `quoted` trade, approved KYB/KYC, `otc`, and `api:write`.
-      responses:
-        "201":
-          description: Quote accepted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades/{id}/funding-proof:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    post:
-      tags: [OTC]
-      operationId: submitOtcFundingProof
-      summary: Submit OTC funding proof
-      description: |
-        Requires an `accepted` trade, approved KYB/KYC, `otc`, and `api:write`.
-        Crypto-to-fiat requires `fundingTxHash`; fiat-to-crypto requires
-        `fiatProofNote` or `fiatProofUrl`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OtcFundingProofRequest"
-      responses:
-        "201":
-          description: Funding proof submitted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades/{id}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    post:
-      tags: [OTC]
-      operationId: cancelOtcTrade
-      summary: Cancel an OTC trade
-      description: Merchant cancellation is allowed only while `draft` or `quoted`. Requires `otc` and `api:write`.
-      responses:
-        "201":
-          description: Trade cancelled.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "500": { $ref: "#/components/responses/InternalError" }
-  /otc/trades/{id}/simulate-ops:
-    servers:
-      - url: https://sbx-institutional.tran-sika.com/sandbox/v1
-        description: Sandbox only
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    post:
-      tags: [OTC]
-      operationId: simulateOtcOperations
-      summary: Simulate desk processing
-      description: |
-        Sandbox-only. Advances an eligible trade through quote, funding, and
-        settlement so you can test lifecycle handling without moving funds. Requires
-        approved KYB/KYC, active `otc` entitlement, and `api:write`.
-      responses:
-        "201":
-          description: Simulated desk actions applied.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OtcTradeResponse"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/InternalError" }
   /tghs:
     get:
@@ -465,6 +435,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TghsSummaryResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  asset: tGHS
+                  environment: test
+                  balance: "46550.00"
+                  wallet:
+                    address: "0x5e31676da4527b910fa1799635d0291ee2727a00"
+                    network: base
+                    explorerUrl: "https://basescan.org/address/0x5e31676da4527b910fa1799635d0291ee2727a00"
+                    onchainRegistered: true
+                  activityCounts:
+                    mint: 9
+                    payout: 7
+                    failed: 1
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -488,6 +474,13 @@ paths:
           schema:
             type: string
             enum: [all, succeeded, failed, pending]
+        - name: reference
+          in: query
+          description: Exact match on `paymentReference`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
       responses:
         "200":
           description: Paginated activities.
@@ -495,6 +488,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TghsActivityListResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  activities:
+                    - id: "4e2bef6a-1def-4201-9f60-560d67521518"
+                      environment: test
+                      kind: payout
+                      status: succeeded
+                      entryType: debit
+                      amount: "10000.00"
+                      asset: tGHS
+                      tradeId: null
+                      note: "Payout completed"
+                      txHash: "0x9e2e0f32856eefc7ea5432b5b97263ec726143d49eb61b9f347f083c86d17be2"
+                      network: base
+                      explorerTxUrl: "https://basescan.org/tx/0x9e2e0f32856eefc7ea5432b5b97263ec726143d49eb61b9f347f083c86d17be2"
+                      beneficiaryId: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+                      paymentMode: momo
+                      paymentReference: "INV-10000-9460"
+                      payoutAccountNumber: "0552479460"
+                      payoutBankName: null
+                      payoutLabel: "TEST MTNGH 9460"
+                      createdAt: "2026-08-08T16:29:38.770Z"
+                    - id: "53c46e50-4fda-445d-94a1-3cd7fb04d3ba"
+                      environment: test
+                      kind: mint
+                      status: succeeded
+                      entryType: credit
+                      amount: "1550.00"
+                      asset: tGHS
+                      tradeId: "09ee5cf7-31ae-4e90-84bc-4dcb67d060e3"
+                      note: "Simulated desk mint"
+                      txHash: "0x9faf0b65b2adfcca71afd4eee0b2261d17a00560ffa1721ca219acd1cb87d667"
+                      network: base
+                      explorerTxUrl: "https://basescan.org/tx/0x9faf0b65b2adfcca71afd4eee0b2261d17a00560ffa1721ca219acd1cb87d667"
+                      beneficiaryId: null
+                      paymentMode: null
+                      paymentReference: null
+                      payoutAccountNumber: null
+                      payoutBankName: null
+                      payoutLabel: null
+                      createdAt: "2026-08-08T16:30:29.106Z"
+                  total: 16
+                  page: 1
+                  limit: 20
+                  environment: test
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -504,31 +544,131 @@ paths:
     get:
       tags: [tGHS]
       operationId: listTghsRedemptions
-      summary: List Live tGHS payout requests
+      summary: List tGHS payout requests
       description: |
-        Lists Live payout requests, newest first. Requires approved KYB/KYC,
-        active `otc` entitlement, and `api:read`. Use tGHS activities for a
-        consistent view across Test and Live.
+        Lists payout/redemption requests for the selected environment, newest
+        first. Requires approved KYB/KYC, active `otc` entitlement, and `api:read`.
+      parameters:
+        - name: reference
+          in: query
+          description: Exact match on the merchant payout reference.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
       responses:
         "200":
-          description: Up to 100 Live payout requests, newest first.
+          description: Up to 100 payout requests, newest first.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TghsPayoutRecordListResponse"
+              example:
+                status: success
+                message: success
+                data:
+                  redemptions:
+                    - id: "9ce685a9-5886-4de6-871a-041bdb95f592"
+                      environment: live
+                      network: base
+                      amount: "168000.00"
+                      beneficiaryId: "6cd84483-4088-4579-a2e1-1d872ea3e22e"
+                      reference: "INV-168000"
+                      beneficiaryLabel: "MTNGH 9460"
+                      paymentMode: momo
+                      payoutAccountNumber: "0552479460"
+                      status: completed
+                      burnTxHash: "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                      burnExplorerUrl: "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                      failureReason: null
+                      burnConfirmedAt: "2026-08-09T12:48:01.727Z"
+                      completedAt: "2026-08-09T12:48:22.104Z"
+                      createdAt: "2026-08-09T12:47:43.774Z"
+                      updatedAt: "2026-08-09T12:48:22.110Z"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/redemptions/{id}:
+    get:
+      tags: [tGHS]
+      operationId: getTghsRedemption
+      summary: Get a tGHS payout receipt
+      description: |
+        Returns the merchant-owned redemption receipt, including lifecycle
+        timestamps, burn transaction hash, and the matching Base or Base
+        Sepolia explorer URL. Requires `api:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Redemption receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TghsPayoutRecordResponse" }
+              example:
+                status: success
+                message: success
+                data:
+                  id: "9ce685a9-5886-4de6-871a-041bdb95f592"
+                  environment: live
+                  network: base
+                  amount: "168000.00"
+                  beneficiaryId: "6cd84483-4088-4579-a2e1-1d872ea3e22e"
+                  reference: "INV-168000"
+                  beneficiaryLabel: "MTNGH 9460"
+                  paymentMode: momo
+                  payoutAccountNumber: "0552479460"
+                  status: completed
+                  burnTxHash: "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                  burnExplorerUrl: "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                  failureReason: null
+                  burnConfirmedAt: "2026-08-09T12:48:01.727Z"
+                  completedAt: "2026-08-09T12:48:22.104Z"
+                  createdAt: "2026-08-09T12:47:43.774Z"
+                  updatedAt: "2026-08-09T12:48:22.110Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /tghs/redemptions/{id}/refresh:
+    post:
+      tags: [tGHS]
+      operationId: refreshTghsRedemption
+      summary: Refresh a tGHS payout
+      description: |
+        Re-checks burn status and resumes payout if needed. Does not submit a
+        new burn. Requires `api:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Reconciled redemption receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TghsPayoutRecordResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
   /tghs/payout:
     post:
       tags: [tGHS]
       operationId: createTghsPayout
-      summary: Pay tGHS to a Ghana beneficiary
+      summary: Request a tGHS payout
       description: |
+        Creates a redemption in Test or Live (environment is the switch).
         Requires sufficient balance, an environment-matched beneficiary,
-        approved KYB/KYC, `otc`, and `api:write`. Test requests do not move
-        funds; Live requests can move value.
+        approved KYB/KYC, `otc`, and `api:write`. Test simulates burn with a
+        BaseScan-style proof; Live burns on-chain. Then Ghana disbursement
+        runs. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
+        `POST .../refresh` until `completed` or a terminal failure.
       requestBody:
         required: true
         content:
@@ -536,17 +676,87 @@ paths:
             schema:
               $ref: "#/components/schemas/TghsPayoutRequest"
             example:
-              amount: 250
-              beneficiaryId: "a53c1965-b195-4619-8878-36fe20ce15f0"
+              amount: 10000
+              beneficiaryId: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+              reference: "INV-10000-9460"
+              idempotencyKey: "payout-inv-10000-9460-1"
+              sender:
+                fullName: "Ama Mensah"
+                country: GB
+                city: London
+                addressLine1: "14 Borough High Street"
+                phone: "+447700900123"
+                nationality: GH
+                idType: passport
+                idNumber: "C1234567"
+                idCountry: GB
+              metadata:
+                partnerTxnId: "PARTNER-77821"
+                purpose: "family_support"
       responses:
         "201":
-          description: Payout request accepted.
+          description: Payout / redemption request accepted.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: "#/components/schemas/TghsPayoutRecordResponse"
                   - $ref: "#/components/schemas/TghsPayoutResponse"
+              examples:
+                testPayout:
+                  summary: Test environment payout
+                  value:
+                    status: success
+                    message: tGHS payout initiated
+                    data:
+                      activity:
+                        id: "4e2bef6a-1def-4201-9f60-560d67521518"
+                        environment: test
+                        kind: payout
+                        status: succeeded
+                        entryType: debit
+                        amount: "10000.00"
+                        asset: tGHS
+                        tradeId: null
+                        note: "Payout completed"
+                        txHash: "0x9e2e0f32856eefc7ea5432b5b97263ec726143d49eb61b9f347f083c86d17be2"
+                        network: base
+                        explorerTxUrl: "https://basescan.org/tx/0x9e2e0f32856eefc7ea5432b5b97263ec726143d49eb61b9f347f083c86d17be2"
+                        beneficiaryId: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
+                        paymentMode: momo
+                        paymentReference: "INV-10000-9460"
+                        payoutAccountNumber: "0552479460"
+                        payoutBankName: null
+                        payoutLabel: "TEST MTNGH 9460"
+                        createdAt: "2026-08-08T16:29:38.770Z"
+                      balance: "36550.00"
+                      environment: test
+                      disbursement:
+                        id: "72900000-8494-47fe-be59-88462316e601"
+                        status: succeeded
+                liveRedemption:
+                  summary: Live completed redemption
+                  value:
+                    status: success
+                    message: tGHS payout initiated
+                    data:
+                      id: "9ce685a9-5886-4de6-871a-041bdb95f592"
+                      environment: live
+                      network: base
+                      amount: "168000.00"
+                      beneficiaryId: "6cd84483-4088-4579-a2e1-1d872ea3e22e"
+                      reference: "INV-168000"
+                      beneficiaryLabel: "MTNGH 9460"
+                      paymentMode: momo
+                      payoutAccountNumber: "0552479460"
+                      status: completed
+                      burnTxHash: "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                      burnExplorerUrl: "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6"
+                      failureReason: null
+                      burnConfirmedAt: "2026-08-09T12:48:01.727Z"
+                      completedAt: "2026-08-09T12:48:22.104Z"
+                      createdAt: "2026-08-09T12:47:43.774Z"
+                      updatedAt: "2026-08-09T12:48:22.110Z"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -586,10 +796,10 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateWebhookEndpointRequest"
             example:
-              url: https://merchant.example/webhooks/transika
-              description: Treasury events
+              url: https://hooks.merchant.example/transika/payouts
+              description: tGHS payout lifecycle
               environment: test
-              events: ["otc.trade.*", "webhook.test"]
+              events: ["tghs.payout.*", "webhook.test"]
       responses:
         "201":
           description: Endpoint created; securely store the one-time secret.
@@ -597,6 +807,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebhookEndpointCreatedResponse"
+              example:
+                status: success
+                message: Webhook endpoint created
+                data:
+                  id: "ea503d42-a37e-4667-8ae9-9b006a5fd021"
+                  url: https://hooks.merchant.example/transika/payouts
+                  description: tGHS payout lifecycle
+                  enabled: true
+                  environment: test
+                  events: ["tghs.payout.*", "webhook.test"]
+                  secretPrefix: "whsec__fl-2n"
+                  signingSecret: "whsec_REPLACE_WITH_ONE_TIME_SECRET"
+                  createdAt: "2026-08-08T16:37:17.870Z"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -730,10 +953,14 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     InternalError:
-      description: Unexpected server error.
+      description: Unexpected server or upstream-provider error. Internal details are never returned.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            status: error
+            message: An error occurred
+            data: null
   schemas:
     Environment:
       type: string
@@ -743,8 +970,9 @@ components:
       format: date-time
     DecimalString:
       type: string
-      pattern: '^-?[0-9]+(?:\.[0-9]+)?$'
-      example: "250.00000000"
+      pattern: '^-?[0-9]+(?:\.[0-9]{1,2})?$'
+      description: Decimal amount string with at most 2 fractional digits. tGHS responses use exactly 2 (e.g. `"10000.00"`).
+      example: "10000.00"
     SuccessBase:
       type: object
       required: [status, message, data]
@@ -784,23 +1012,6 @@ components:
               required: [id]
               properties:
                 id: { type: string, format: uuid }
-    FxRate:
-      type: object
-      required: [ghsPerUsdt, updatedAt, updatedByName]
-      properties:
-        ghsPerUsdt:
-          type: number
-          exclusiveMinimum: 0
-        updatedAt:
-          $ref: "#/components/schemas/DateTime"
-        updatedByName:
-          type: [string, "null"]
-    FxRateResponse:
-      allOf:
-        - $ref: "#/components/schemas/SuccessBase"
-        - type: object
-          properties:
-            data: { $ref: "#/components/schemas/FxRate" }
     PayoutNetwork:
       type: object
       required: [code, kind, label]
@@ -858,25 +1069,56 @@ components:
       type: object
       additionalProperties: false
       required: [label, accountType, accountNumber, networkCode]
+      description: |
+        Create a Ghana MoMo or bank beneficiary. `networkCode` must match
+        `accountType` (`GET /beneficiaries/networks?kind=momo|bank`).
+        For MoMo omit `bankName`. For bank, `bankName` is optional and
+        defaults to the network catalog label.
       properties:
         label: { type: string, minLength: 1, maxLength: 120 }
-        accountType: { type: string, enum: [momo, bank] }
-        accountNumber: { type: string, minLength: 4, maxLength: 64 }
-        networkCode: { type: string, minLength: 2, maxLength: 32 }
-        accountName: { type: [string, "null"], minLength: 1, maxLength: 200 }
-        bankName: { type: string, minLength: 1, maxLength: 120 }
-        customerId: { type: [string, "null"], minLength: 1, maxLength: 36 }
+        accountType:
+          type: string
+          enum: [momo, bank]
+          description: Must match the kind of `networkCode` in the catalog.
+        accountNumber:
+          type: string
+          minLength: 4
+          maxLength: 64
+          description: MoMo MSISDN (prefer 0XXXXXXXXX) or bank account number.
+        networkCode:
+          type: string
+          minLength: 2
+          maxLength: 32
+          description: Catalog code for that accountType (e.g. MTNGH or OMNIBSIC).
+        accountName:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 200
+          description: Holder name from POST /beneficiaries/resolve (recommended on Live).
+        bankName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Bank only. Optional; defaults to the network label. Omit for MoMo.
+        referenceId:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 64
+          description: Your correlation id. Unique per environment when set. Look up with GET /beneficiaries?referenceId=.
     BeneficiaryPatch:
       type: object
       additionalProperties: false
+      description: |
+        Metadata-only update. Rail fields (accountType, accountNumber,
+        networkCode, accountName, bankName) cannot be changed.
       properties:
         label: { type: string, minLength: 1, maxLength: 120 }
-        accountType: { type: string, enum: [momo, bank] }
-        accountNumber: { type: string, minLength: 4, maxLength: 64 }
-        networkCode: { type: string, minLength: 2, maxLength: 32 }
-        accountName: { type: [string, "null"], minLength: 1, maxLength: 200 }
-        bankName: { type: string, minLength: 1, maxLength: 120 }
-        customerId: { type: [string, "null"], minLength: 1, maxLength: 36 }
+        referenceId:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 64
+          description: Your correlation id (unique per environment). Pass null to clear.
+      minProperties: 1
     Beneficiary:
       type: object
       required:
@@ -889,8 +1131,7 @@ components:
           networkCode,
           accountName,
           bankName,
-          customerId,
-          customerName,
+          referenceId,
           createdAt,
           updatedAt,
         ]
@@ -903,8 +1144,7 @@ components:
         networkCode: { type: string }
         accountName: { type: [string, "null"] }
         bankName: { type: [string, "null"] }
-        customerId: { type: [string, "null"] }
-        customerName: { type: [string, "null"] }
+        referenceId: { type: [string, "null"] }
         createdAt: { $ref: "#/components/schemas/DateTime" }
         updatedAt: { $ref: "#/components/schemas/DateTime" }
     BeneficiaryResponse:
@@ -951,8 +1191,6 @@ components:
           paymentMode,
           statusComposite,
           payoutStatus,
-          customerId,
-          customerName,
           createdAt,
           updatedAt,
         ]
@@ -977,8 +1215,6 @@ components:
         paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
         statusComposite: { $ref: "#/components/schemas/TghsActivityStatus" }
         payoutStatus: { $ref: "#/components/schemas/TghsActivityStatus" }
-        customerId: { type: [string, "null"] }
-        customerName: { type: [string, "null"] }
         createdAt: { $ref: "#/components/schemas/DateTime" }
         updatedAt: { $ref: "#/components/schemas/DateTime" }
     TransactionListResponse:
@@ -998,161 +1234,6 @@ components:
                 limit: { type: integer, minimum: 1, maximum: 100 }
                 source: { type: string, const: treasury }
                 environment: { $ref: "#/components/schemas/Environment" }
-    OtcTradeStatus:
-      type: string
-      enum:
-        [
-          draft,
-          quoted,
-          accepted,
-          funding_submitted,
-          funded,
-          settling,
-          settled,
-          expired,
-          cancelled,
-          rejected,
-        ]
-    OtcTrade:
-      type: object
-      required:
-        [
-          id,
-          environment,
-          direction,
-          status,
-          amountIn,
-          amountOut,
-          assetIn,
-          assetOut,
-          network,
-          rate,
-          quotedAt,
-          quoteExpiresAt,
-          sendingWallet,
-          receiveWallet,
-          treasuryAddress,
-          fundingTxHash,
-          fiatPayRef,
-          fiatPayInstructions,
-          fiatProofNote,
-          fiatProofUrl,
-          payoutTxHash,
-          payoutReference,
-          settleMode,
-          beneficiaryId,
-          failReason,
-          disbursementNote,
-          createdAt,
-          updatedAt,
-        ]
-      properties:
-        id: { type: string, format: uuid }
-        environment: { $ref: "#/components/schemas/Environment" }
-        direction: { type: string, enum: [crypto_to_fiat, fiat_to_crypto] }
-        status: { $ref: "#/components/schemas/OtcTradeStatus" }
-        amountIn:
-          anyOf:
-            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
-        amountOut:
-          anyOf:
-            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
-        assetIn: { type: [string, "null"] }
-        assetOut: { type: [string, "null"] }
-        network: { type: [string, "null"] }
-        rate:
-          anyOf:
-            [{ $ref: "#/components/schemas/DecimalString" }, { type: "null" }]
-        quotedAt:
-          anyOf: [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }]
-        quoteExpiresAt:
-          anyOf: [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }]
-        sendingWallet: { type: [string, "null"] }
-        receiveWallet: { type: [string, "null"] }
-        treasuryAddress: { type: [string, "null"] }
-        fundingTxHash: { type: [string, "null"] }
-        fiatPayRef: { type: [string, "null"] }
-        fiatPayInstructions: { type: [string, "null"] }
-        fiatProofNote: { type: [string, "null"] }
-        fiatProofUrl: { type: [string, "null"], format: uri }
-        payoutTxHash: { type: [string, "null"] }
-        payoutReference: { type: [string, "null"] }
-        settleMode: { type: string, enum: [fiat, managed_tghs] }
-        beneficiaryId: { type: [string, "null"] }
-        failReason: { type: [string, "null"] }
-        disbursementNote: { type: [string, "null"] }
-        createdAt: { $ref: "#/components/schemas/DateTime" }
-        updatedAt: { $ref: "#/components/schemas/DateTime" }
-    CreateOtcTradeRequest:
-      type: object
-      additionalProperties: false
-      required: [direction]
-      properties:
-        direction: { type: string, enum: [crypto_to_fiat, fiat_to_crypto] }
-        settleMode: { type: string, enum: [fiat, managed_tghs] }
-        amountIn: { type: number, exclusiveMinimum: 0 }
-        amountOut: { type: number, exclusiveMinimum: 0 }
-        assetIn: { type: string, minLength: 2, maxLength: 16 }
-        assetOut: { type: string, minLength: 2, maxLength: 16 }
-        network: { type: string, minLength: 1, maxLength: 64 }
-        sendingWallet: { type: string, minLength: 8, maxLength: 128 }
-        receiveWallet: { type: string, minLength: 8, maxLength: 128 }
-        beneficiaryId: { type: [string, "null"], minLength: 1, maxLength: 36 }
-      anyOf:
-        - required: [amountIn]
-        - required: [amountOut]
-    OtcFundingProofRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        fundingTxHash: { type: string, minLength: 8, maxLength: 128 }
-        fiatProofNote: { type: string, minLength: 1, maxLength: 1000 }
-        fiatProofUrl: { type: string, format: uri, maxLength: 512 }
-      anyOf:
-        - required: [fundingTxHash]
-        - required: [fiatProofNote]
-        - required: [fiatProofUrl]
-    OtcTradeResponse:
-      allOf:
-        - $ref: "#/components/schemas/SuccessBase"
-        - type: object
-          properties:
-            data: { $ref: "#/components/schemas/OtcTrade" }
-    OtcTradeListResponse:
-      allOf:
-        - $ref: "#/components/schemas/SuccessBase"
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [trades, total, page, limit, environment]
-              properties:
-                trades:
-                  type: array
-                  items: { $ref: "#/components/schemas/OtcTrade" }
-                total: { type: integer, minimum: 0 }
-                page: { type: integer, minimum: 1 }
-                limit: { type: integer, minimum: 1, maximum: 100 }
-                environment: { $ref: "#/components/schemas/Environment" }
-    OtcBalanceListResponse:
-      allOf:
-        - $ref: "#/components/schemas/SuccessBase"
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [environment, balances]
-              properties:
-                environment: { $ref: "#/components/schemas/Environment" }
-                balances:
-                  type: array
-                  items:
-                    type: object
-                    required: [asset, balance, environment]
-                    properties:
-                      asset: { type: string, const: tGHS }
-                      balance: { $ref: "#/components/schemas/DecimalString" }
-                      environment: { $ref: "#/components/schemas/Environment" }
     TghsActivity:
       type: object
       required:
@@ -1175,6 +1256,8 @@ components:
           payoutAccountNumber,
           payoutBankName,
           payoutLabel,
+          sender,
+          metadata,
           createdAt,
         ]
       properties:
@@ -1196,6 +1279,14 @@ components:
         payoutAccountNumber: { type: [string, "null"] }
         payoutBankName: { type: [string, "null"] }
         payoutLabel: { type: [string, "null"] }
+        sender:
+          oneOf:
+            - { $ref: "#/components/schemas/PayoutSender" }
+            - { type: "null" }
+        metadata:
+          oneOf:
+            - { $ref: "#/components/schemas/PayoutMetadata" }
+            - { type: "null" }
         createdAt: { $ref: "#/components/schemas/DateTime" }
     TghsActivityListResponse:
       allOf:
@@ -1231,12 +1322,14 @@ components:
                 wallet:
                   type: object
                   description: Managed account metadata returned for reconciliation.
-                  required: [address, network, explorerUrl, label]
+                  required: [address, network, explorerUrl, onchainRegistered]
                   properties:
                     address: { type: string }
                     network: { type: string, const: base }
                     explorerUrl: { type: string, format: uri }
-                    label: { type: [string, "null"] }
+                    onchainRegistered:
+                      type: boolean
+                      description: Whether the managed address is registered for on-chain balance checks in this environment.
                 activityCounts:
                   type: object
                   required: [mint, payout, failed]
@@ -1244,37 +1337,115 @@ components:
                     mint: { type: integer, minimum: 0 }
                     payout: { type: integer, minimum: 0 }
                     failed: { type: integer, minimum: 0 }
+    PayoutSender:
+      type: object
+      additionalProperties: false
+      description: |
+        Optional remitter / originator. When provided, include `fullName`
+        or both `firstName` and `lastName`. Stored on the payout or redemption
+        receipt for merchant reconciliation.
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+        lastName: { type: string, minLength: 1, maxLength: 100 }
+        country: { type: string, minLength: 2, maxLength: 2, description: ISO-3166-1 alpha-2 }
+        addressLine1: { type: string, minLength: 1, maxLength: 200 }
+        addressLine2: { type: string, minLength: 1, maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        region: { type: string, minLength: 1, maxLength: 100 }
+        postalCode: { type: string, minLength: 1, maxLength: 32 }
+        phone: { type: string, minLength: 1, maxLength: 32 }
+        email: { type: string, format: email, maxLength: 200 }
+        dateOfBirth: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+        idType:
+          type: string
+          enum: [passport, national_id, drivers_license, other]
+        idNumber: { type: string, minLength: 1, maxLength: 64 }
+        idCountry: { type: string, minLength: 2, maxLength: 2 }
+        nationality: { type: string, minLength: 2, maxLength: 2 }
+    PayoutMetadata:
+      type: object
+      additionalProperties:
+        type: string
+        minLength: 1
+        maxLength: 500
+      description: Optional free-form string map (at most 20 keys).
+      maxProperties: 20
     TghsPayoutRequest:
       type: object
       additionalProperties: false
       required: [amount, beneficiaryId]
       properties:
-        amount: { type: number, exclusiveMinimum: 0 }
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          description: tGHS amount with at most 2 decimal places.
         beneficiaryId: { type: string, minLength: 1, maxLength: 36 }
+        reference:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Optional merchant correlation id. Returned as `reference` on the redemption. Used as rail narration when set.
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 64
+          description: Optional retry key. The same merchant, environment, and key returns the existing payout or redemption instead of creating a duplicate.
+        sender:
+          $ref: "#/components/schemas/PayoutSender"
+        metadata:
+          $ref: "#/components/schemas/PayoutMetadata"
         simulateFailure:
           type: boolean
-          description: Sandbox testing switch; do not use in live requests.
+          description: Test only. Simulated burn still succeeds; Ghana payout fails (`payout_failed`). Balance is not restored after burn.
     TghsPayoutRecord:
       type: object
       required:
         - id
         - environment
+        - network
         - amount
         - beneficiaryId
+        - reference
+        - sender
+        - metadata
         - status
+        - burnTxHash
+        - burnExplorerUrl
         - failureReason
+        - burnConfirmedAt
         - completedAt
         - createdAt
         - updatedAt
       properties:
         id: { type: string, format: uuid }
         environment: { type: string, const: live }
+        network: { type: string, enum: [base, base-sepolia] }
         amount: { $ref: "#/components/schemas/DecimalString" }
         beneficiaryId: { type: string, format: uuid }
+        reference: { type: [string, "null"] }
+        sender:
+          oneOf:
+            - { $ref: "#/components/schemas/PayoutSender" }
+            - { type: "null" }
+        metadata:
+          oneOf:
+            - { $ref: "#/components/schemas/PayoutMetadata" }
+            - { type: "null" }
+        beneficiaryLabel: { type: [string, "null"] }
+        paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
+        payoutAccountNumber: { type: [string, "null"] }
         status:
           type: string
-          description: Current processing status. Use tGHS activities for the normalized pending, succeeded, or failed result.
+          enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed]
+        burnTxHash: { type: [string, "null"] }
+        burnExplorerUrl: { type: [string, "null"], format: uri }
         failureReason: { type: [string, "null"] }
+        burnConfirmedAt:
+          {
+            oneOf:
+              [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }],
+          }
         completedAt:
           {
             oneOf:
@@ -1324,10 +1495,11 @@ components:
           type: array
           description: |
             Event filters for merchant HTTP delivery. Supported filters include
-            `otc.trade.*`, exact OTC event names, `webhook.test`, and `*`.
+            `tghs.payout.*`, exact `tghs.payout.*` event names, `webhook.test`,
+            and `*`. OTC desk activity is not delivered over HTTP webhooks.
           items:
             type: string
-            examples: [otc.trade.*, webhook.test]
+            examples: [tghs.payout.*, webhook.test]
     WebhookEndpoint:
       type: object
       required:

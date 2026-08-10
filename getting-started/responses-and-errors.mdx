@@ -75,7 +75,7 @@ Update the key's allowed IPs in the merchant dashboard before retrying. Do not a
 ```javascript
 async function transikaRequest(path, options = {}) {
   const response = await fetch(
-    `https://sbx-institutional.tran-sika.com/sandbox/v1${path}`,
+    `https://sbx-institutional.tran-sika.com/v1/sandbox${path}`,
     {
       ...options,
       headers: {

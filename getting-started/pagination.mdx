@@ -17,12 +17,12 @@ List endpoints use page-based pagination. Request one page at a time and preserv
   Number of records to return. Transika clamps the value to the range `1` through `100`.
 </ParamField>
 
-Some endpoints also accept filters such as `q`, `status`, `customerId`, or an endpoint-specific type. Consult the API reference before sending a filter.
+Some endpoints also accept filters such as `q`, `status`, `reference`, or an endpoint-specific type. Consult the API reference before sending a filter.
 
 ## Request a page
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/sandbox/v1/transactions?page=1&limit=50" \
+curl "https://sbx-institutional.tran-sika.com/v1/sandbox/transactions?page=1&limit=50" \
   --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
   --header "Accept: application/json"
 ```
@@ -37,7 +37,7 @@ async function* listPages(path) {
 
   for (let page = 1; ; page += 1) {
     const url = new URL(
-      `https://sbx-institutional.tran-sika.com/sandbox/v1${path}`,
+      `https://sbx-institutional.tran-sika.com/v1/sandbox${path}`,
     );
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
@@ -52,7 +52,11 @@ async function* listPages(path) {
 
     yield body.data;
 
-    const records = body.data.items ?? body.data.data ?? [];
+    const records =
+      body.data.transactions ??
+      body.data.activities ??
+      body.data.beneficiaries ??
+      [];
     if (records.length < limit) break;
   }
 }

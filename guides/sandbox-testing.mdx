@@ -10,10 +10,10 @@ Use the sandbox to validate your integration without moving funds. Test and Live
 
 | Environment | Route prefix | API key prefix |
 | --- | --- | --- |
-| Test | `/sandbox/v1` | `txk_test_` |
+| Test | `/v1/sandbox` | `txk_test_` |
 | Live | `/v1` | `txk_live_` |
 
-A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/sandbox/v1/*` is also rejected with `400`.
+A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/v1/sandbox/*` is also rejected with `400`.
 
 <Warning>
 Do not use `X-Transika-Environment` to select an API-key environment. The request path and key prefix are authoritative.
@@ -24,7 +24,7 @@ Do not use `X-Transika-Environment` to select an API-key environment. The reques
 Sandbox access does not bypass merchant controls:
 
 - KYB/KYC must be `approved`.
-- `otc` is required for OTC and tGHS.
+- `otc` is required for tGHS.
 - `api_access` is required for webhook endpoint management.
 - API keys use only `api:read` and `api:write`; `api:write` implies read.
 - The request source must match the Test key's IP whitelist.
@@ -39,7 +39,7 @@ Keep the base URL and key outside source code.
 export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
 export TRANSIKA_TEST_API_KEY="txk_test_REPLACE_LOCALLY"
 
-curl "$TRANSIKA_API_URL/sandbox/v1/otc/trades" \
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
@@ -49,48 +49,40 @@ Never send a Test key to a Live route or reuse test webhook secrets in Live.
 
 The following data is scoped to the selected environment:
 
-- OTC trades
 - Ghana beneficiaries
 - tGHS balances, activity, and payout requests
 - Webhook endpoints and deliveries
+- Dashboard OTC trades (not part of this public API)
 
-IDs from one environment should be treated as unavailable in the other. For example, a Test beneficiary cannot settle a Live trade.
-
-## Test an OTC trade
-
-Create the trade through `/sandbox/v1/otc/trades`, then use the Test-only helper:
-
-```bash
-curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/otc/trades/$TRADE_ID/simulate-ops" \
-  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
-```
-
-This action advances a non-terminal test trade through quoting, funding, and settlement. It rejects terminal trades and returns `403` outside Test. Any funding instructions or transaction references returned in Test are sample data and do not prove a fiat or stablecoin transfer.
+IDs from one environment should be treated as unavailable in the other. For example, a Test beneficiary cannot be used with a Live payout.
 
 ## Test tGHS
 
-Use a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`, then call `simulate-ops`. After the trade settles:
+Acquire Test tGHS balance through the Transika dashboard when needed, then read the authoritative summary:
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-You can test a beneficiary payout with:
+Confirm `data.wallet.explorerUrl` for on-chain proof of the managed wallet. You can test a beneficiary payout with:
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 25,
-    "beneficiaryId": "TEST_BENEFICIARY_ID",
+    "amount": 10000,
+    "beneficiaryId": "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f",
+    "reference": "INV-10000-9460",
+    "idempotencyKey": "payout-inv-10000-9460-1",
     "simulateFailure": true
   }'
 ```
 
-`simulateFailure` lets you verify failure handling in Test. After the request, read `/tghs/activities` and confirm your integration handles the returned terminal state and refreshed balance.
+`simulateFailure` lets you verify failure handling in Test. After the request, read `/tghs/activities?reference=INV-10000-9460` and confirm your integration handles the returned terminal state and refreshed balance. Retrying with the same `idempotencyKey` should return the existing payout instead of creating another debit.
+
+A successful Test payout (without `simulateFailure`) returns an activity with your `paymentReference`, a terminal `succeeded` or `failed` status, refreshed balance, and an `explorerTxUrl` when a ledger transaction hash exists. Look the row up again with `GET /tghs/activities?reference=INV-10000-9460` or `GET /transactions?reference=INV-10000-9460`.
 
 ## Test webhooks
 
@@ -98,23 +90,23 @@ Create an endpoint with `"environment": "test"` through the sandbox route, then 
 
 ```bash
 curl -X POST \
-  "$TRANSIKA_API_URL/sandbox/v1/webhooks/endpoints/$ENDPOINT_ID/test" \
+  "$TRANSIKA_API_URL/v1/sandbox/webhooks/endpoints/$ENDPOINT_ID/test" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-The receiver gets a signed `webhook.test` payload. Test endpoints also receive Test `otc.trade.*` events that match their filters. They do not receive Live events.
+The receiver gets a signed `webhook.test` payload. Test endpoints also receive Test `tghs.payout.*` events when you run sandbox payouts. They do not receive Live events.
 
 See [Webhooks](/guides/webhooks) for signature verification and retry behavior.
 
 ## Before going live
 
 1. Create separate Live API keys with the minimum required scope and production egress IPs.
-2. Recreate beneficiaries needed in Live.
+2. Recreate beneficiaries needed in Live — call Live `POST /beneficiaries/resolve` first so `accountName` is the rail-registered holder name, not a Test simulated name.
 3. Register separate Live webhook endpoints and store their new signing secrets.
 4. Confirm required product features and KYB/KYC remain approved.
 5. Confirm your application uses the Live route prefix and never sends Test credentials to Live.
 6. Run a controlled Live transaction and verify your reconciliation and webhook handling.
 
 <Warning>
-Sandbox success confirms your integration logic only. It does not confirm that a Live transfer or payout will succeed.
+Sandbox success confirms your integration logic only. It does not confirm that a Live resolve, transfer, or payout will succeed.
 </Warning>

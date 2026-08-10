@@ -1,10 +1,10 @@
 ---
 title: "Beneficiaries"
-description: "Create and manage Ghana MoMo and bank beneficiaries for OTC and tGHS payouts."
+description: "Create and manage Ghana MoMo and bank beneficiaries for tGHS payouts."
 keywords: ["beneficiaries", "Ghana", "mobile money", "bank payout", "name enquiry"]
 ---
 
-Beneficiaries are Ghana Mobile Money or bank accounts that can receive an OTC fiat settlement or a tGHS payout. They are available to every approved merchant and do not require a separate product feature.
+Beneficiaries are Ghana Mobile Money or bank accounts that can receive a tGHS payout. They are available to every approved merchant and do not require a separate product feature.
 
 <Info>
 Your merchant must have an approved KYB/KYC status. API keys use `api:read` for reads and `api:write` for changes. `api:write` also grants read access.
@@ -15,46 +15,150 @@ Your merchant must have an approved KYB/KYC status. API keys use `api:read` for 
 Beneficiaries are isolated by environment:
 
 - Live requests use `/v1/*` with a `txk_live_` key.
-- Test requests use `/sandbox/v1/*` with a `txk_test_` key.
+- Test requests use `/v1/sandbox/*` with a `txk_test_` key.
 
-A beneficiary created in Test is not available in Live. Defaults are also maintained separately in each environment.
+A beneficiary created in Test is not available in Live. Create the beneficiaries you need in each environment.
 
 ## List supported networks
 
 Fetch the current network catalog instead of hard-coding network codes.
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/beneficiaries/networks?kind=momo" \
+curl "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/networks?kind=momo" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+Example:
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "networks": [
+      { "code": "MTNGH", "label": "MTN Mobile Money", "kind": "momo" },
+      { "code": "TCELGH", "label": "Telecel Cash", "kind": "momo" },
+      { "code": "ATGH", "label": "AirtelTigo Money", "kind": "momo" }
+    ]
+  }
+}
 ```
 
 Set `kind` to `momo` or `bank`, or omit it to return both. Each beneficiary's `networkCode` must belong to the selected `accountType`.
 
 ## Resolve an account name
 
-Name enquiry returns the account details available for the supplied network and account number. It does not create or update a beneficiary.
+Call `POST /beneficiaries/resolve` before you create a beneficiary when you want the registered holder name for that MoMo wallet or bank account. Resolve does **not** create or update a beneficiary — copy `accountName` into your create payload if you want to store it.
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/beneficiaries/resolve" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/resolve" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "networkCode": "MTNGH",
-    "accountNumber": "233241234567"
+    "accountNumber": "0552479460"
   }'
 ```
 
-The response includes `accountName`, `accountType`, and the normalized network details. Pass the returned `accountName` when you create the beneficiary if you want to retain the verified holder name.
+| Environment | What `resolve` returns |
+| --- | --- |
+| **Test** (`/v1/sandbox`, `txk_test_`) | Simulated holder name shaped like `TEST {networkCode} {last4}` so you can build UI and create flows without calling a live rail. |
+| **Live** (`/v1`, `txk_live_`) | The registered holder name from Transika’s Ghana payout rail for that network and account. Success only when the rail confirms the account. |
+
+**Test** example response:
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "accountName": "TEST MTNGH 9460",
+    "accountType": "momo",
+    "networkCode": "MTNGH",
+    "networkLabel": "MTN Mobile Money"
+  }
+}
+```
+
+**Live** example response (shape is the same; `accountName` is the rail-registered name):
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "accountName": "JOSEPH ANNOH",
+    "accountType": "momo",
+    "networkCode": "MTNGH",
+    "networkLabel": "MTN Mobile Money"
+  }
+}
+```
+
+On Live, an unknown, unregistered, or unverifiable account returns an error (`422` or `502`) with the rail message — Transika does not invent a placeholder name. Handle that before creating the beneficiary.
 
 <Note>
-Treat Test name-enquiry results as test data, not production account verification.
+Prefer Ghana MoMo numbers in local `0XXXXXXXXX` form (10 digits). Do not treat Test `accountName` values as real KYC.
 </Note>
 
 ## Create a beneficiary
 
+Recommended flow: list networks → `resolve` → create with the returned `accountName`.
+
+`accountType` must match the network’s `kind` (`momo` or `bank`). Rail fields are immutable after create.
+
+### Mobile money (`accountType: "momo"`)
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `label` | Yes | Your display name |
+| `accountType` | Yes | Must be `momo` |
+| `accountNumber` | Yes | Ghana MoMo number, preferably `0XXXXXXXXX` (10 digits) |
+| `networkCode` | Yes | From `GET /beneficiaries/networks?kind=momo` (e.g. `MTNGH`, `TCELGH`, `ATGH`) |
+| `accountName` | No | From `resolve` — recommended on Live |
+| `bankName` | No | Omit — not used for MoMo (`null` on the response) |
+| `referenceId` | No | Your correlation id (unique per environment). Use it later to look up this beneficiary. |
+
+```javascript
+body: JSON.stringify({
+  label: "TEST MTNGH 9460",
+  accountType: "momo",
+  accountNumber: "0552479460",
+  networkCode: "MTNGH",
+  accountName: "TEST MTNGH 9460", // from POST /beneficiaries/resolve
+  referenceId: "user_42_momo", // optional
+})
+```
+
+### Bank (`accountType: "bank"`)
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `label` | Yes | Your display name |
+| `accountType` | Yes | Must be `bank` |
+| `accountNumber` | Yes | Bank account number |
+| `networkCode` | Yes | From `GET /beneficiaries/networks?kind=bank` (e.g. `OMNIBSIC`, `GCBGH`) |
+| `accountName` | No | From `resolve` — recommended on Live |
+| `bankName` | No | Optional display name; defaults to the network catalog label |
+| `referenceId` | No | Your correlation id (unique per environment) |
+
+```javascript
+body: JSON.stringify({
+  label: "TEST OMNIBSIC 8888",
+  accountType: "bank",
+  accountNumber: "067677767788888888",
+  networkCode: "OMNIBSIC",
+  accountName: "TEST OMNIBSIC 8888",
+  bankName: "OmniBSIC Bank", // optional
+  referenceId: "user_42_bank",
+})
+```
+
+### Example create (MoMo)
+
 ```javascript
 const response = await fetch(
-  `${process.env.TRANSIKA_API_URL}/sandbox/v1/beneficiaries`,
+  `${process.env.TRANSIKA_API_URL}/v1/sandbox/beneficiaries`,
   {
     method: "POST",
     headers: {
@@ -62,31 +166,72 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      label: "Main payout account",
+      label: "TEST MTNGH 9460",
       accountType: "momo",
-      accountNumber: "233241234567",
+      accountNumber: "0552479460",
       networkCode: "MTNGH",
-      accountName: "Example Account Holder",
+      accountName: "TEST MTNGH 9460",
+      referenceId: "user_42_momo",
     }),
   },
 );
 
-const beneficiary = await response.json();
+const body = await response.json();
 ```
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `label` | Yes | Your display name for the beneficiary. |
-| `accountType` | Yes | `momo` or `bank`. |
-| `accountNumber` | Yes | Mobile number or bank account number. |
-| `networkCode` | Yes | Code returned by the networks endpoint. |
-| `accountName` | No | Holder name returned by name enquiry. |
-| `bankName` | No | Bank display name. Defaults to the network label for bank accounts. |
-| `customerId` | No | Defaults to your merchant's primary customer. |
+Example created MoMo beneficiary:
 
-Transika does not assign a default beneficiary. Select and send the intended `beneficiaryId` for every payout or trade.
+```json
+{
+  "status": "success",
+  "message": "Beneficiary created",
+  "data": {
+    "id": "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f",
+    "environment": "test",
+    "label": "TEST MTNGH 9460",
+    "accountType": "momo",
+    "accountNumber": "0552479460",
+    "networkCode": "MTNGH",
+    "accountName": "TEST MTNGH 9460",
+    "bankName": null,
+    "referenceId": "user_42_momo",
+    "createdAt": "2026-08-08T16:29:18.628Z",
+    "updatedAt": "2026-08-08T16:29:18.628Z"
+  }
+}
+```
 
-Changing `accountNumber` or `networkCode` without also supplying a new `accountName` clears the previously stored resolved name.
+Transika does not assign a default beneficiary. Select and send the intended `beneficiaryId` for every payout.
+
+## Look up a beneficiary
+
+| Method | How |
+| --- | --- |
+| By Transika id | `GET /v1/beneficiaries/{id}` |
+| By your reference | `GET /v1/beneficiaries?referenceId=user_42_momo` |
+
+Reference lookup returns that single beneficiary (or `404` if none). References are unique per merchant environment.
+
+## Update (metadata only)
+
+`PATCH /v1/beneficiaries/{id}` can change **`label`** and/or **`referenceId` only**.
+
+These fields are **immutable** after create:
+
+- `accountType`
+- `accountNumber`
+- `networkCode`
+- `accountName`
+- `bankName`
+
+To change destination details, delete the beneficiary and create a new one after `resolve`.
+
+```bash
+curl -X PATCH "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/d64cb955-01c7-4a10-b1bf-1479ebb6fa9f" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "label": "Payroll MTN", "referenceId": "payroll_mtn" }'
+```
 
 ## Manage beneficiaries
 
@@ -94,16 +239,17 @@ Changing `accountNumber` or `networkCode` without also supplying a new `accountN
 | --- | --- | --- |
 | `GET` | `/v1/beneficiaries/networks` | `api:read` |
 | `POST` | `/v1/beneficiaries/resolve` | `api:read` |
-| `GET` | `/v1/beneficiaries` | `api:read` |
+| `GET` | `/v1/beneficiaries` | `api:read` (optional `?referenceId=` / `?q=`) |
+| `GET` | `/v1/beneficiaries/:id` | `api:read` |
 | `POST` | `/v1/beneficiaries` | `api:write` |
-| `PATCH` | `/v1/beneficiaries/:id` | `api:write` |
+| `PATCH` | `/v1/beneficiaries/:id` | `api:write` (`label`, `referenceId` only) |
 | `DELETE` | `/v1/beneficiaries/:id` | `api:write` |
 
-Use the same paths under `/sandbox/v1` for Test.
+Use the same paths under `/v1/sandbox` for Test.
 
 ## Use a beneficiary
 
-- For `crypto_to_fiat` OTC with `settleMode: "fiat"`, provide `beneficiaryId` when creating the trade.
 - For a tGHS payout, provide `beneficiaryId` and the amount to `/v1/tghs/payout`.
+- Dashboard OTC fiat settlement can also use a saved beneficiary when you select one in the Transika dashboard.
 
-The beneficiary must belong to your merchant and the same environment as the trade or payout. See [OTC trades](/guides/otc-trades) and [tGHS treasury](/guides/tghs-treasury).
+The beneficiary must belong to your merchant and the same environment as the payout. See [tGHS treasury](/guides/tghs-treasury).

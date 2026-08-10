@@ -1,10 +1,15 @@
 ---
 title: "tGHS treasury"
-description: "Hold a managed GHS balance and pay Ghana mobile money or bank beneficiaries."
-keywords: ["tGHS", "treasury", "Ghana cedi", "beneficiary payout"]
+description: "Hold a managed, GHS-denominated tGHS balance and redeem to Ghana mobile money or bank beneficiaries."
+keywords: ["tGHS", "treasury", "Ghana cedi", "beneficiary payout", "on-chain proof", "reference"]
 ---
 
-tGHS is a managed treasury balance denominated in Ghana cedis. You can acquire tGHS through an eligible OTC trade, read your available balance and activity, and pay Ghana mobile money or bank beneficiaries.
+tGHS is a managed, GHS-denominated treasury balance held in Transika custody.
+In Live it is an on-chain claim in your managed wallet (non-transferable outside
+Transika redemption); in Test it is a simulated ledger balance. Acquire tGHS
+through the Transika dashboard (OTC desk), then use this API to read your
+balance, reconcile on-chain proof links, and redeem to Ghana mobile money or
+bank beneficiaries.
 
 <Info>
 tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KYC, and API keys use `api:read` or `api:write`.
@@ -13,85 +18,191 @@ tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KY
 ## How the workflow fits together
 
 <Steps>
-  <Step title="Request managed tGHS settlement">
-    Create a `crypto_to_fiat` OTC trade with `settleMode: "managed_tghs"`. Accept the quote and submit the stablecoin funding transaction hash.
+  <Step title="Acquire managed tGHS in the dashboard">
+    Complete an eligible OTC trade in the Transika dashboard with managed tGHS settlement. OTC create, accept, funding, and desk simulation are dashboard-only and are not part of this merchant API.
   </Step>
-  <Step title="Wait for settlement">
-    Track the trade until its status is `settled`. The quoted GHS amount then becomes available in your tGHS balance.
+  <Step title="Confirm your balance and wallet">
+    Call `GET /v1/tghs` for the authoritative balance and the managed wallet's Base explorer URL.
   </Step>
   <Step title="Create a Ghana beneficiary">
     Store a mobile money or bank beneficiary in the same environment as the balance.
   </Step>
   <Step title="Initiate a payout">
-    Submit the beneficiary and amount. Track the returned activity or payout record until it completes.
+    Submit `beneficiaryId`, `amount`, and optionally your own `reference`, `idempotencyKey`, remitter `sender`, and `metadata`. Transika burns tGHS (real on-chain in Live; simulated with a BaseScan-style proof in Test), then disburses GHS to the beneficiary.
+  </Step>
+  <Step title="Track status with your reference or receipt id">
+    Poll `GET /tghs/redemptions` or `GET /tghs/redemptions/{id}` (and optionally `POST .../refresh`) until `completed` or a terminal failure. Environment is the only switch between Test and Live.
   </Step>
 </Steps>
-
-Transika manages the settlement process behind this workflow; your integration uses only the merchant endpoints documented here.
 
 ## Read your balance
 
 ```bash
-curl "$TRANSIKA_API_URL/sandbox/v1/tghs" \
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
 ```
 
-The response includes the asset, environment, available balance, and activity counts. Treat the returned balance as authoritative for the selected environment.
+Example response:
 
-## Read treasury activity
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "asset": "tGHS",
+    "environment": "test",
+    "balance": "46550.00",
+    "wallet": {
+      "address": "0x5e31676da4527b910fa1799635d0291ee2727a00",
+      "network": "base",
+      "explorerUrl": "https://basescan.org/address/0x5e31676da4527b910fa1799635d0291ee2727a00",
+      "onchainRegistered": true
+    },
+    "activityCounts": {
+      "mint": 9,
+      "payout": 7,
+      "failed": 1
+    }
+  }
+}
+```
+
+Treat the returned balance as authoritative for the selected environment. Amounts and balances are decimal strings with exactly **2** fractional digits (e.g. `"10000.00"`). Requests may include at most 2 decimal places.
+
+### On-chain proof of balance
+
+| Source | Field | What it proves |
+| --- | --- | --- |
+| `GET /tghs` | `data.wallet.explorerUrl` | Managed wallet address on Base |
+| `GET /tghs` | `data.wallet.address` | Same address, for your own explorer lookup |
+| Redemption | `burnExplorerUrl` + `burnTxHash` | Burn proof for the payout (real in Live; simulated BaseScan link in Test) |
+
+`wallet.onchainRegistered` indicates whether the managed address is registered for on-chain balance checks in the selected environment.
+
+## Merchant reference and status lookup
+
+Pass your internal correlation id as optional `reference` on `POST /tghs/payout` (max 64 characters). Transika stores it and returns it for reconciliation.
+
+Look up payouts with `GET /tghs/redemptions?reference=INV-1042` or `GET /tghs/redemptions/{id}` in **both** Test and Live. Matching is exact.
+
+If you omit `reference`, Transika generates a system value such as `TXK-TGHS-4E2BEF6A`. Use a separate `idempotencyKey` for safe retries; it is not a substitute for `reference`.
+
+## Read treasury activity (mints)
+
+`GET /tghs/activities` lists mint ledger rows for the selected environment. **Payouts** use redemption receipts (`/tghs/redemptions`), not activities.
 
 ```python
 import os
 import requests
 
 response = requests.get(
-    f"{os.environ['TRANSIKA_API_URL']}/sandbox/v1/tghs/activities",
+    f"{os.environ['TRANSIKA_API_URL']}/v1/sandbox/tghs/activities",
     headers={"Authorization": f"Bearer {os.environ['TRANSIKA_TEST_API_KEY']}"},
-    params={"kind": "payout", "status": "succeeded", "page": 1, "limit": 20},
+    params={"kind": "mint", "status": "succeeded", "page": 1, "limit": 20},
 )
 response.raise_for_status()
 print(response.json())
 ```
 
-Activity kinds are:
+Activity kinds:
 
-- `mint`: tGHS added through a settled OTC trade.
-- `payout`: tGHS used for a beneficiary payout.
-
-Activity statuses are:
-
-- `pending`: processing has not reached a final result.
-- `succeeded`: the balance credit or payout completed.
-- `failed`: processing failed. Read the current balance before deciding whether to retry.
+- `mint`: tGHS added through a settled OTC trade (dashboard).
+- `payout`: legacy Test ledger payouts only (new payouts are redemptions).
 
 ## Pay a beneficiary
 
-Create the Ghana beneficiary in the same environment before initiating the payout.
+Create the Ghana beneficiary in the same environment before initiating the payout. The same `POST /tghs/payout` and `/tghs/redemptions*` URLs work in Test and Live — environment (API key / header) is the switch. Test simulates burn + BaseScan proof; Live uses the real chain.
 
 ```bash
-curl -X POST "$TRANSIKA_API_URL/sandbox/v1/tghs/payout" \
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 250,
-    "beneficiaryId": "BENEFICIARY_ID"
+    "amount": 10000,
+    "beneficiaryId": "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f",
+    "reference": "INV-10000-9460",
+    "idempotencyKey": "payout-inv-10000-9460-1"
   }'
 ```
 
-The request must not exceed your available balance. A successful request returns a payout or payout-request record for the selected environment. Use `GET /tghs/activities` for a consistent `pending`, `succeeded`, or `failed` view.
+| Field | Required | Notes |
+| --- | --- | --- |
+| `amount` | Yes | At most 2 decimal places; must not exceed available balance |
+| `beneficiaryId` | Yes | Same environment as the balance |
+| `reference` | No | Your correlation id (max 64). Returned as `reference` on the redemption. |
+| `idempotencyKey` | No | Retry key (8–64 chars). Same merchant + environment + key returns the existing redemption. |
+| `sender` | No | Optional remitter / originator object. |
+| `metadata` | No | Optional string map (max 20 keys). |
+| `simulateFailure` | No | Test only. Simulated burn succeeds; Ghana payout fails. Balance is not restored after burn. |
 
-You can also read Live payout-request history:
+## Payout lifecycle
 
-```bash
-curl "$TRANSIKA_API_URL/v1/tghs/redemptions" \
-  -H "Authorization: Bearer $TRANSIKA_LIVE_API_KEY"
+`POST /v1/tghs/payout` creates a redemption in both environments.
+
+```text
+approved → burn_submitted → burn_confirmed → payout_pending → completed
+                 ↘ burn_failed                 ↘ payout_failed
 ```
 
-See [Beneficiaries](/guides/beneficiaries) for supported Ghana account types and network discovery.
+| Status | Meaning |
+| --- | --- |
+| `approved` | Request accepted; burn submission is starting |
+| `burn_submitted` | Burn submitted (real in Live; simulated BaseScan proof in Test) |
+| `burn_confirmed` | Burn confirmed; Ghana payout is starting |
+| `payout_pending` | Ghana disbursement is in progress |
+| `completed` | Beneficiary payout succeeded |
+| `burn_failed` | Burn failed; Test ledger balance is restored |
+| `payout_failed` | Burn succeeded but Ghana payout failed; contact Transika (no auto restore) |
 
-<Warning>
-Payout requests do not currently accept an idempotency key. If a request times out after submission, check activity and payout-request history before retrying.
-</Warning>
+Create usually returns `burn_submitted`. Poll or `refresh` until terminal:
+
+```bash
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 168000,
+    "beneficiaryId": "6cd84483-4088-4579-a2e1-1d872ea3e22e",
+    "reference": "INV-168000",
+    "idempotencyKey": "payout-inv-168000-1"
+  }'
+
+curl "$TRANSIKA_API_URL/v1/sandbox/tghs/redemptions?reference=INV-168000" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/redemptions/9ce685a9-5886-4de6-871a-041bdb95f592/refresh" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+Example completed receipt:
+
+```json
+{
+  "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+  "environment": "test",
+  "network": "base",
+  "amount": "168000.00",
+  "beneficiaryId": "6cd84483-4088-4579-a2e1-1d872ea3e22e",
+  "reference": "INV-168000",
+  "beneficiaryLabel": "MTNGH 9460",
+  "paymentMode": "momo",
+  "payoutAccountNumber": "0552479460",
+  "status": "completed",
+  "burnTxHash": "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+  "burnExplorerUrl": "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+  "failureReason": null,
+  "burnConfirmedAt": "2026-08-09T12:48:01.727Z",
+  "completedAt": "2026-08-09T12:48:22.104Z",
+  "createdAt": "2026-08-09T12:47:43.774Z",
+  "updatedAt": "2026-08-09T12:48:22.110Z"
+}
+```
+
+`POST /v1/tghs/redemptions/{id}/refresh` re-checks burn status and resumes payout if needed. It does not submit another burn.
+
+Provider-specific processing references remain internal. Merchant receipts expose business status, your `reference`, beneficiary snapshot fields, burn proof, and lifecycle timestamps.
+
+See [Beneficiaries](/guides/beneficiaries) for supported Ghana account types and network discovery.
 
 ## Endpoints
 
@@ -100,10 +211,12 @@ Payout requests do not currently accept an idempotency key. If a request times o
 | `GET` | `/v1/tghs` | `api:read` |
 | `GET` | `/v1/tghs/activities` | `api:read` |
 | `GET` | `/v1/tghs/redemptions` | `api:read` |
+| `GET` | `/v1/tghs/redemptions/{id}` | `api:read` |
+| `POST` | `/v1/tghs/redemptions/{id}/refresh` | `api:read` |
 | `POST` | `/v1/tghs/payout` | `api:write` |
 
-Use `/sandbox/v1/tghs*` with a Test API key.
+Use `/v1/sandbox/tghs*` with a Test API key.
 
 ## Environment behavior
 
-Test and Live balances, beneficiaries, activities, payout requests, and linked OTC trades are isolated. Test lets you exercise the workflow without moving funds. Live requests can move value and should be submitted only after you have verified the beneficiary, amount, and environment.
+Test and Live balances, beneficiaries, payout requests (redemptions), and linked OTC settlements are isolated. Test is a full Live rehearsal (same URLs, simulated burn/BaseScan, same webhooks) without moving real funds. Live requests can move value and should be submitted only after you have verified the beneficiary, amount, and environment.
