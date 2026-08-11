@@ -13,8 +13,8 @@ OTC desk activity runs in the Transika dashboard and is notified by email and in
 | Event | When |
 | --- | --- |
 | `webhook.test` | You call the test endpoint |
-| `tghs.payout.created` | Payout / redemption accepted |
-| `tghs.payout.burn_submitted` | Burn submitted (real chain in Live; simulated in Test) |
+| `tghs.payout.created` | Payout / redemption accepted (`approved`) |
+| `tghs.payout.burn_submitted` | Burn submitted by the background worker (real chain in Live; simulated in Test) |
 | `tghs.payout.burn_confirmed` | Burn confirmed |
 | `tghs.payout.payout_pending` | Ghana disbursement started |
 | `tghs.payout.completed` | Beneficiary payout succeeded |

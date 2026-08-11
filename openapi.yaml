@@ -665,10 +665,13 @@ paths:
       description: |
         Creates a redemption in Test or Live (environment is the switch).
         Requires sufficient balance, an environment-matched beneficiary,
-        approved KYB/KYC, `otc`, and `api:write`. Test simulates burn with a
+        approved KYB/KYC, `otc`, and `api:write`. Returns `approved` immediately
+        and enqueues burn submission on the background worker (`tghs.payout.created`
+        then `tghs.payout.burn_submitted`). Test simulates burn with a
         BaseScan-style proof; Live burns on-chain. Then Ghana disbursement
         runs. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
-        `POST .../refresh` until `completed` or a terminal failure.
+        `POST .../refresh`, or listen for webhooks, until `completed` or a
+        terminal failure.
       requestBody:
         required: true
         content:
@@ -1437,6 +1440,9 @@ components:
         payoutAccountNumber: { type: [string, "null"] }
         status:
           type: string
+          description: >
+            Create returns `approved` (burn queued). Worker advances to
+            `burn_submitted`, then confirmation and Ghana payout states.
           enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed]
         burnTxHash: { type: [string, "null"] }
         burnExplorerUrl: { type: [string, "null"], format: uri }

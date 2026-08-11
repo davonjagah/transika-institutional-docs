@@ -146,7 +146,7 @@ approved → burn_submitted → burn_confirmed → payout_pending → completed
 
 | Status | Meaning |
 | --- | --- |
-| `approved` | Request accepted; burn submission is starting |
+| `approved` | Request accepted; burn submission is queued on the worker |
 | `burn_submitted` | Burn submitted (real in Live; simulated BaseScan proof in Test) |
 | `burn_confirmed` | Burn confirmed; Ghana payout is starting |
 | `payout_pending` | Ghana disbursement is in progress |
@@ -154,7 +154,7 @@ approved → burn_submitted → burn_confirmed → payout_pending → completed
 | `burn_failed` | Burn failed; Test ledger balance is restored |
 | `payout_failed` | Burn succeeded but Ghana payout failed; contact Transika (no auto restore) |
 
-Create usually returns `burn_submitted`. Poll or `refresh` until terminal:
+Create returns `approved` and enqueues the burn. Listen for `tghs.payout.burn_submitted` (or poll / `refresh`) until terminal:
 
 ```bash
 curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \

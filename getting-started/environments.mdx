@@ -30,11 +30,16 @@ curl "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries?page=1&li
 
 ## Live isolation
 
-Live requests can initiate real business workflows. Promote deliberately:
+Live requests can initiate real business workflows. Ops must **Enable Live** for the merchant before Live dashboard mode, `txk_live_` keys, or live webhooks are available. Without that, Live product calls return `403` with `errors.code: "live_access_required"`.
+
+Promote deliberately:
 
 <Steps>
   <Step title="Complete sandbox testing">
     Exercise success, validation, authorization, and webhook retry paths.
+  </Step>
+  <Step title="Ask Transika to enable Live">
+    Compliance enables Live for your merchant in the operations console.
   </Step>
   <Step title="Create a live key">
     Use a separate `txk_live_` key with only the scopes your integration needs.
