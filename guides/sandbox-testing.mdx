@@ -1,42 +1,53 @@
 ---
 title: "Sandbox testing"
 description: "Test Transika merchant workflows with isolated routes, credentials, and data."
-keywords: ["sandbox", "testing", "test API key", "simulation", "environment isolation"]
+keywords:
+  ["sandbox", "testing", "test API key", "simulation", "environment isolation"]
 ---
 
 Use the sandbox to validate your integration without moving funds. Test and Live credentials, routes, and records are isolated.
 
 ## Route and key isolation
 
-| Environment | Route prefix | API key prefix |
-| --- | --- | --- |
-| Test | `/v1/sandbox` | `txk_test_` |
-| Live | `/v1` | `txk_live_` |
+| Environment | Route prefix  | API key prefix |
+| ----------- | ------------- | -------------- |
+| Test        | `/v1/sandbox` | `txk_test_`    |
+| Live        | `/v1`         | `txk_live_`    |
 
 A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/v1/sandbox/*` is also rejected with `400`.
 
 <Warning>
-Do not use `X-Transika-Environment` to select an API-key environment. The request path and key prefix are authoritative.
+  Do not use `X-Transika-Environment` to select an API-key environment. The
+  request path and key prefix are authoritative.
 </Warning>
 
 ## Authentication and access
 
-Sandbox access does not bypass merchant controls:
+Sandbox access does not bypass merchant controls for normal accounts:
 
 - KYB/KYC must be `approved`.
+- Live mode, live API keys, and live webhooks additionally require ops **Enable Live** (`liveEnabled`).
 - `otc` is required for tGHS.
 - `api_access` is required for webhook endpoint management.
 - API keys use only `api:read` and `api:write`; `api:write` implies read.
 - The request source must match the Test key's IP whitelist.
 
-If KYB/KYC is not approved, product routes return `403` with `errors.code: "kyb_required"`. If a feature is missing, gated routes return `403` with `errors.code: "feature_not_entitled"`. A non-whitelisted source returns `403` with `errors.code: "api_key_ip_not_allowed"`.
+**Test Partners** (ops-provisioned) are a shortcut for sandbox demos:
+
+- Created with KYB approved, `otc` + `api_access` granted, and Live permanently locked.
+- Sign in on the **merchant dashboard** with email + password only (`otpRequired: false` — no OTP email). Do not use the ops admin login.
+- Ops provisions login, an optional webhook URL, and a `txk_test_` key (secrets shown once).
+- Live traffic and Enable Live return `403`/`422` with `errors.code: "test_partner_live_forbidden"`.
+- If the merchant UI still shows a 6-digit code after password login, the merchant app build is stale — confirm `POST /v1/auth/login` returns `otpRequired: false`, then redeploy / hard-refresh.
+
+If KYB/KYC is not approved, product routes return `403` with `errors.code: "kyb_required"`. If Live is not enabled, Live `/v1` traffic and live key/webhook creation return `403` with `errors.code: "live_access_required"`. If a feature is missing, gated routes return `403` with `errors.code: "feature_not_entitled"`. A non-whitelisted source returns `403` with `errors.code: "api_key_ip_not_allowed"`.
 
 ## Configure a test client
 
 Keep the base URL and key outside source code.
 
 ```bash
-export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
+export TRANSIKA_API_URL="https://sbx-institutional-api.tran-sika.com"
 export TRANSIKA_TEST_API_KEY="txk_test_REPLACE_LOCALLY"
 
 curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
@@ -80,7 +91,12 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
   }'
 ```
 
-`simulateFailure` lets you verify failure handling in Test. After the request, read `/tghs/activities?reference=INV-10000-9460` and confirm your integration handles the returned terminal state and refreshed balance. Retrying with the same `idempotencyKey` should return the existing payout instead of creating another debit.
+`simulateFailure` lets you verify failure handling in Test. Create returns
+`approved` and the burn runs on the background worker — run `npm run dev:worker`
+(or set `ENABLE_BACKGROUND_JOBS=true`) locally so Test burns advance to
+`burn_submitted`. After the request, poll `/tghs/redemptions?reference=…` or
+listen for `tghs.payout.*` webhooks until terminal. Retrying with the same
+`idempotencyKey` should return the existing payout instead of creating another debit.
 
 A successful Test payout (without `simulateFailure`) returns an activity with your `paymentReference`, a terminal `succeeded` or `failed` status, refreshed balance, and an `explorerTxUrl` when a ledger transaction hash exists. Look the row up again with `GET /tghs/activities?reference=INV-10000-9460` or `GET /transactions?reference=INV-10000-9460`.
 
@@ -108,5 +124,6 @@ See [Webhooks](/guides/webhooks) for signature verification and retry behavior.
 6. Run a controlled Live transaction and verify your reconciliation and webhook handling.
 
 <Warning>
-Sandbox success confirms your integration logic only. It does not confirm that a Live resolve, transfer, or payout will succeed.
+  Sandbox success confirms your integration logic only. It does not confirm that
+  a Live resolve, transfer, or payout will succeed.
 </Warning>

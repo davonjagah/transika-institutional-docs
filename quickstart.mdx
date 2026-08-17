@@ -33,14 +33,14 @@ Call the sandbox beneficiary network endpoint:
 
 ```bash cURL
 curl --request GET \
-  --url "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo" \
+  --url "https://sbx-institutional-api.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo" \
   --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
   --header "Accept: application/json"
 ```
 
 ```javascript JavaScript
 const response = await fetch(
-  "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo",
+  "https://sbx-institutional-api.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo",
   {
     headers: {
       Authorization: `Bearer ${process.env.TRANSIKA_API_KEY}`,
@@ -59,7 +59,7 @@ import os
 import requests
 
 response = requests.get(
-    "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo",
+    "https://sbx-institutional-api.tran-sika.com/v1/sandbox/beneficiaries/networks?kind=momo",
     headers={
         "Authorization": f"Bearer {os.environ['TRANSIKA_API_KEY']}",
         "Accept": "application/json",

@@ -11,8 +11,8 @@ Transika provides sandbox and live routes on the same API origin. The URL path a
 
 | Environment | Base URL | Key prefix |
 | --- | --- | --- |
-| Sandbox (Test) | `https://sbx-institutional.tran-sika.com/v1/sandbox` | `txk_test_` |
-| Live | `https://sbx-institutional.tran-sika.com/v1` | `txk_live_` |
+| Sandbox (Test) | `https://sbx-institutional-api.tran-sika.com/v1/sandbox` | `txk_test_` |
+| Live | `https://sbx-institutional-api.tran-sika.com/v1` | `txk_live_` |
 
 Both path prefixes currently share the institutional host above. The path and key prefix are authoritative. Before production cutover, confirm the Live origin shown in your merchant dashboard if a dedicated production host is issued.
 
@@ -23,18 +23,23 @@ Use a `txk_test_` key with `/v1/sandbox` and a `txk_live_` key with `/v1`. Do no
 Sandbox requests use test-mode records and product behavior. They do not switch to live mode based on request data or headers.
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/v1/sandbox/beneficiaries?page=1&limit=20" \
+curl "https://sbx-institutional-api.tran-sika.com/v1/sandbox/beneficiaries?page=1&limit=20" \
   --header "Authorization: Bearer ${TRANSIKA_TEST_API_KEY}" \
   --header "Accept: application/json"
 ```
 
 ## Live isolation
 
-Live requests can initiate real business workflows. Promote deliberately:
+Live requests can initiate real business workflows. Ops must **Enable Live** for the merchant before Live dashboard mode, `txk_live_` keys, or live webhooks are available. Without that, Live product calls return `403` with `errors.code: "live_access_required"`.
+
+Promote deliberately:
 
 <Steps>
   <Step title="Complete sandbox testing">
     Exercise success, validation, authorization, and webhook retry paths.
+  </Step>
+  <Step title="Ask Transika to enable Live">
+    Compliance enables Live for your merchant in the operations console.
   </Step>
   <Step title="Create a live key">
     Use a separate `txk_live_` key with only the scopes your integration needs.
@@ -52,7 +57,7 @@ Live requests can initiate real business workflows. Promote deliberately:
 Keep the origin, path, and secret outside application code:
 
 ```text
-TRANSIKA_API_ORIGIN=https://sbx-institutional.tran-sika.com
+TRANSIKA_API_ORIGIN=https://sbx-institutional-api.tran-sika.com
 TRANSIKA_API_PATH=/v1/sandbox
 TRANSIKA_API_KEY=txk_test_REPLACE_ME
 ```
