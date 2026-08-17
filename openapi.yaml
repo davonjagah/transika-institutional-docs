@@ -16,9 +16,9 @@ info:
     nonmatching source IPs receive `403` with `errors.code` set to
     `api_key_ip_not_allowed`.
 servers:
-  - url: https://sbx-institutional.tran-sika.com/v1
+  - url: https://sbx-institutional-api.tran-sika.com/v1
     description: Live path (`txk_live_` keys). Origin is the current institutional host; confirm the production origin in your dashboard at cutover.
-  - url: https://sbx-institutional.tran-sika.com/v1/sandbox
+  - url: https://sbx-institutional-api.tran-sika.com/v1/sandbox
     description: Sandbox / Test path (`txk_test_` keys)
 tags:
   - name: Beneficiaries

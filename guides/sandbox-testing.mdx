@@ -1,22 +1,24 @@
 ---
 title: "Sandbox testing"
 description: "Test Transika merchant workflows with isolated routes, credentials, and data."
-keywords: ["sandbox", "testing", "test API key", "simulation", "environment isolation"]
+keywords:
+  ["sandbox", "testing", "test API key", "simulation", "environment isolation"]
 ---
 
 Use the sandbox to validate your integration without moving funds. Test and Live credentials, routes, and records are isolated.
 
 ## Route and key isolation
 
-| Environment | Route prefix | API key prefix |
-| --- | --- | --- |
-| Test | `/v1/sandbox` | `txk_test_` |
-| Live | `/v1` | `txk_live_` |
+| Environment | Route prefix  | API key prefix |
+| ----------- | ------------- | -------------- |
+| Test        | `/v1/sandbox` | `txk_test_`    |
+| Live        | `/v1`         | `txk_live_`    |
 
 A Test key sent to `/v1/*` is rejected with `400`. A Live key sent to `/v1/sandbox/*` is also rejected with `400`.
 
 <Warning>
-Do not use `X-Transika-Environment` to select an API-key environment. The request path and key prefix are authoritative.
+  Do not use `X-Transika-Environment` to select an API-key environment. The
+  request path and key prefix are authoritative.
 </Warning>
 
 ## Authentication and access
@@ -45,7 +47,7 @@ If KYB/KYC is not approved, product routes return `403` with `errors.code: "kyb_
 Keep the base URL and key outside source code.
 
 ```bash
-export TRANSIKA_API_URL="https://sbx-institutional.tran-sika.com"
+export TRANSIKA_API_URL="https://sbx-institutional-api.tran-sika.com"
 export TRANSIKA_TEST_API_KEY="txk_test_REPLACE_LOCALLY"
 
 curl "$TRANSIKA_API_URL/v1/sandbox/tghs" \
@@ -122,5 +124,6 @@ See [Webhooks](/guides/webhooks) for signature verification and retry behavior.
 6. Run a controlled Live transaction and verify your reconciliation and webhook handling.
 
 <Warning>
-Sandbox success confirms your integration logic only. It does not confirm that a Live resolve, transfer, or payout will succeed.
+  Sandbox success confirms your integration logic only. It does not confirm that
+  a Live resolve, transfer, or payout will succeed.
 </Warning>

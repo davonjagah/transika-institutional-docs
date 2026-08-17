@@ -22,7 +22,7 @@ Some endpoints also accept filters such as `q`, `status`, `reference`, or an end
 ## Request a page
 
 ```bash
-curl "https://sbx-institutional.tran-sika.com/v1/sandbox/transactions?page=1&limit=50" \
+curl "https://sbx-institutional-api.tran-sika.com/v1/sandbox/transactions?page=1&limit=50" \
   --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
   --header "Accept: application/json"
 ```
@@ -37,7 +37,7 @@ async function* listPages(path) {
 
   for (let page = 1; ; page += 1) {
     const url = new URL(
-      `https://sbx-institutional.tran-sika.com/v1/sandbox${path}`,
+      `https://sbx-institutional-api.tran-sika.com/v1/sandbox${path}`,
     );
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(limit));
