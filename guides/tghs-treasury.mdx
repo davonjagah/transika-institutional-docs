@@ -28,7 +28,7 @@ tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KY
     Store a mobile money or bank beneficiary in the same environment as the balance.
   </Step>
   <Step title="Initiate a payout">
-    Submit `beneficiaryId`, `amount`, and optionally your own `reference`, `idempotencyKey`, remitter `sender`, and `metadata`. Transika burns tGHS (real on-chain in Live; simulated with a BaseScan-style proof in Test), then disburses GHS to the beneficiary.
+    Submit `beneficiaryId`, `amount`, required BOG `originator` + `transaction`, and optionally your own `reference`, `idempotencyKey`, and `metadata`. Transika burns tGHS (real on-chain in Live; simulated with a BaseScan-style proof in Test), then disburses GHS to the beneficiary.
   </Step>
   <Step title="Track status with your reference or receipt id">
     Poll `GET /tghs/redemptions` or `GET /tghs/redemptions/{id}` (and optionally `POST .../refresh`) until `completed` or a terminal failure. Environment is the only switch between Test and Live.
@@ -83,9 +83,16 @@ Treat the returned balance as authoritative for the selected environment. Amount
 
 Pass your internal correlation id as optional `reference` on `POST /tghs/payout` (max 64 characters). Transika stores it and returns it for reconciliation.
 
-Look up payouts with `GET /tghs/redemptions?reference=INV-1042` or `GET /tghs/redemptions/{id}` in **both** Test and Live. Matching is exact.
+If you omit `reference`, Transika uses `transaction.transactionId`, or generates a system value such as `TXK-TGHS-4E2BEF6A`.
 
-If you omit `reference`, Transika generates a system value such as `TXK-TGHS-4E2BEF6A`. Use a separate `idempotencyKey` for safe retries; it is not a substitute for `reference`.
+Look up payouts with `GET /tghs/redemptions?reference=INV-1042` or `GET /tghs/redemptions/{id}` in **both** Test and Live. Matching is exact on any of:
+
+- your `reference`
+- the redemption `id`
+- `idempotencyKey`
+- `transaction.transactionId`
+
+Use a separate `idempotencyKey` for safe retries; prefer a stable `reference` for polling.
 
 ## Read treasury activity (mints)
 
@@ -121,7 +128,21 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
     "amount": 10000,
     "beneficiaryId": "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f",
     "reference": "INV-10000-9460",
-    "idempotencyKey": "payout-inv-10000-9460-1"
+    "idempotencyKey": "payout-inv-10000-9460-1",
+    "originator": {
+      "fullName": "Ama Mensah",
+      "customerReference": "CUST-77821",
+      "country": "GB",
+      "city": "London",
+      "dateOfBirth": "1990-04-12"
+    },
+    "transaction": {
+      "transactionId": "PARTNER-77821",
+      "amount": 10000,
+      "currency": "GHS",
+      "purpose": "family_support",
+      "transactionTimestamp": "2026-08-08T16:29:00.000Z"
+    }
   }'
 ```
 
@@ -129,9 +150,11 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
 | --- | --- | --- |
 | `amount` | Yes | At most 2 decimal places; must not exceed available balance |
 | `beneficiaryId` | Yes | Same environment as the balance |
+| `originator` | Yes | BOG remitter: `fullName`, `customerReference`, `country`, `city`, plus `dateOfBirth` or `legalEntityId` |
+| `transaction` | Yes | BOG transaction: `transactionId`, `amount` (must match), `currency`, `purpose`, `transactionTimestamp` |
+| `beneficiary` | — | Returned on the redemption (not sent on create). Snapshot from linked `beneficiaryId`: `fullName`, `customerReference`, `country: ghana` |
 | `reference` | No | Your correlation id (max 64). Returned as `reference` on the redemption. |
 | `idempotencyKey` | No | Retry key (8–64 chars). Same merchant + environment + key returns the existing redemption. |
-| `sender` | No | Optional remitter / originator object. |
 | `metadata` | No | Optional string map (max 20 keys). |
 | `simulateFailure` | No | Test only. Simulated burn succeeds; Ghana payout fails. Balance is not restored after burn. |
 

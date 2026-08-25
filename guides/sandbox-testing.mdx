@@ -98,7 +98,7 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
 listen for `tghs.payout.*` webhooks until terminal. Retrying with the same
 `idempotencyKey` should return the existing payout instead of creating another debit.
 
-A successful Test payout (without `simulateFailure`) returns an activity with your `paymentReference`, a terminal `succeeded` or `failed` status, refreshed balance, and an `explorerTxUrl` when a ledger transaction hash exists. Look the row up again with `GET /tghs/activities?reference=INV-10000-9460` or `GET /transactions?reference=INV-10000-9460`.
+A successful Test payout (without `simulateFailure`) advances through burn → Ghana rail on the redemption receipt. Poll `GET /v1/sandbox/tghs/redemptions?reference=INV-10000-9460` or `GET /v1/sandbox/tghs/redemptions/{id}` (optionally `POST .../refresh`) until `completed` or a terminal failure. `GET /tghs/activities` is for mint ledger rows — use `/tghs/redemptions` for payout status.
 
 ## Test webhooks
 
