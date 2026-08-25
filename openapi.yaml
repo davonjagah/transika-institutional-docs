@@ -964,7 +964,7 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           example:
             status: error
-            message: An error occurred
+            message: Something went wrong on our side. Please retry shortly or contact support.
             data: null
   schemas:
     Environment:
