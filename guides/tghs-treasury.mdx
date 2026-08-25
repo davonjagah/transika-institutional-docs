@@ -85,14 +85,14 @@ Pass your internal correlation id as optional `reference` on `POST /tghs/payout`
 
 If you omit `reference`, Transika uses `transaction.transactionId`, or generates a system value such as `TXK-TGHS-4E2BEF6A`.
 
-Look up payouts with `GET /tghs/redemptions?reference=INV-1042` or `GET /tghs/redemptions/{id}` in **both** Test and Live. Matching is exact on any of:
+Look up payouts with `GET /tghs/redemptions?reference=INV-1042` or `GET /tghs/redemptions/{id}` in **both** Test and Live. For both the list filter and the path param, matching is exact on any of:
 
 - your `reference`
 - the redemption `id`
 - `idempotencyKey`
 - `transaction.transactionId`
 
-Use a separate `idempotencyKey` for safe retries; prefer a stable `reference` for polling.
+`POST /tghs/redemptions/{id}/refresh` accepts the same lookup values.
 
 ## Read treasury activity (mints)
 

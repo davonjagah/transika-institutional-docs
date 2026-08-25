@@ -598,11 +598,15 @@ paths:
         Returns the merchant-owned redemption receipt, including lifecycle
         timestamps, burn transaction hash, and the matching Base or Base
         Sepolia explorer URL. Requires `api:read`.
+
+        The path value may be the redemption id, merchant `reference`,
+        `idempotencyKey`, or `transaction.transactionId`.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          description: Redemption id, reference, idempotency key, or transaction.transactionId.
+          schema: { type: string, minLength: 1, maxLength: 64 }
       responses:
         "200":
           description: Redemption receipt.
@@ -642,11 +646,15 @@ paths:
       description: |
         Re-checks burn status and resumes payout if needed. Does not submit a
         new burn. Requires `api:read`.
+
+        The path value may be the redemption id, merchant `reference`,
+        `idempotencyKey`, or `transaction.transactionId`.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          description: Redemption id, reference, idempotency key, or transaction.transactionId.
+          schema: { type: string, minLength: 1, maxLength: 64 }
       responses:
         "201":
           description: Reconciled redemption receipt.
