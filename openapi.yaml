@@ -25,6 +25,8 @@ tags:
     description: Ghana payout account discovery and storage.
   - name: Transactions
     description: Unified merchant treasury transaction history.
+  - name: Statements
+    description: Period tGHS ledger statements with opening/closing balance and exports.
   - name: tGHS
     description: Managed GHS balances, activity, and Ghana beneficiary payouts.
   - name: Webhooks
@@ -421,6 +423,104 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /statements:
+    get:
+      tags: [Statements]
+      operationId: getStatement
+      summary: Get tGHS period statement
+      description: |
+        Requires approved KYB/KYC and `api:read` (or legacy `transactions:read`).
+        Returns an account statement issued by Transika Ltd. Reconstructs
+        opening, running, and closing balances from settled
+        FX conversion/GHS Provisioning (OTC/admin mint), Disbursement
+        (completed or reissued redemption), and Reversal (reissue mint) lines.
+        `reference` is Transika’s id for FX/reversal lines and the
+        merchant-provided payout reference for disbursements. Commission is always
+        `0.00`. Period `from`/`to` are `YYYY-MM-DD` (UTC day bounds); max span
+        92 days. Environment is not included on the statement document.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-01-01"
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-01-31"
+      responses:
+        "200":
+          description: Statement header and lines.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message, data]
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Statement"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /statements/export:
+    get:
+      tags: [Statements]
+      operationId: exportStatement
+      summary: Export tGHS period statement
+      description: |
+        Same data as `GET /statements`, as a downloadable file.
+        `format` is `csv`, `xlsx`, or `pdf`.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [csv, xlsx, pdf]
+            default: csv
+      responses:
+        "200":
+          description: Statement file attachment.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/InternalError" }
   /tghs:
     get:
@@ -1247,6 +1347,96 @@ components:
                 limit: { type: integer, minimum: 1, maximum: 100 }
                 source: { type: string, const: treasury }
                 environment: { $ref: "#/components/schemas/Environment" }
+    StatementLine:
+      type: object
+      required:
+        [
+          dateTime,
+          transactionId,
+          reference,
+          description,
+          credit,
+          debit,
+          commission,
+          balance,
+        ]
+      properties:
+        dateTime: { $ref: "#/components/schemas/DateTime" }
+        transactionId:
+          type: string
+          description: Transika system id (mint request or redemption id).
+        reference:
+          type: [string, "null"]
+          description: >
+            Transika reference for credit/reversal (OTC trade id, ledger entry,
+            or mint id). Merchant-provided payout reference for debit.
+        description:
+          type: string
+          enum:
+            - FX conversion/GHS Provisioning
+            - Disbursement
+            - Reversal
+          description: >
+            FX conversion/GHS Provisioning (mint), Disbursement (payout),
+            or Reversal (reissue remint).
+        credit: { $ref: "#/components/schemas/DecimalString" }
+        debit: { $ref: "#/components/schemas/DecimalString" }
+        commission:
+          allOf:
+            - $ref: "#/components/schemas/DecimalString"
+          description: Always 0.00 until fees are productized.
+        balance: { $ref: "#/components/schemas/DecimalString" }
+    Statement:
+      type: object
+      required:
+        [
+          partnerName,
+          accountName,
+          accountNumber,
+          accountCurrency,
+          disbursalCurrency,
+          period,
+          openingBalance,
+          openingBalanceCurrency,
+          closingBalance,
+          closingBalanceCurrency,
+          lines,
+        ]
+      properties:
+        partnerName:
+          type: string
+          const: Transika Ltd
+          description: Statement issuer.
+        accountName:
+          type: string
+          description: Merchant org name (`merchants.name`).
+        accountNumber:
+          type: string
+          description: Merchant tGHS wallet address (registered SCA or synthetic display address).
+        accountCurrency: { type: string, const: tGHS }
+        disbursalCurrency: { type: string, const: GHS }
+        period:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        openingBalance: { $ref: "#/components/schemas/DecimalString" }
+        openingBalanceCurrency:
+          type: string
+          const: tGHS
+          description: Opening balance currency.
+        closingBalance:
+          allOf:
+            - $ref: "#/components/schemas/DecimalString"
+          description: Closing balance (1:1 with tGHS), reported in GHS.
+        closingBalanceCurrency:
+          type: string
+          const: GHS
+          description: Closing balance currency.
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/StatementLine" }
     TghsActivity:
       type: object
       required:

@@ -1,0 +1,54 @@
+---
+title: "Statements"
+description: "Period account statements issued by Transika Ltd, with opening/closing balance and CSV, Excel, or PDF export."
+keywords: ["statement", "ledger", "reconcile", "credit", "debit", "reversal", "export"]
+---
+
+Download a period **account statement** for your managed tGHS balance. The
+statement is issued by **Transika Ltd**. Opening, running, and closing balances
+are reconstructed from settled movements for the selected dates.
+
+<Info>
+Requires approved KYB/KYC and `api:read`. Use the same Test / Live path as other
+treasury endpoints. Environment is not printed on the statement document.
+</Info>
+
+## Line types
+
+| Description | Meaning | Transaction ID | Reference |
+| ----------- | ------- | -------------- | --------- |
+| `FX conversion/GHS Provisioning` | OTC or admin mint executed | Mint request id | Transika reference (trade / ledger / mint id) |
+| `Disbursement` | Ghana payout completed, or reminted after failure | Redemption id | Your provided payout reference |
+| `Reversal` | Ops reissue mint restoring tGHS | Mint request id | Transika reference |
+
+Commission is always `0.00` in the current release.
+
+## Fetch a statement
+
+```bash
+curl "$TRANSIKA_API_URL/v1/sandbox/statements?from=2026-01-01&to=2026-01-31" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+Period is at most **92 days**. Dates are `YYYY-MM-DD` (UTC day bounds).
+
+Header includes merchant name, issuer letterhead (**Transika Ltd**, Reg.
+`CS248401025`, Tse Addo - Accra, Ghana, `info@tran-sika.com`), ledger number
+(tGHS wallet address), account / disbursal currencies, opening balance, and
+closing balance.
+
+## Export
+
+```bash
+curl -OJ "$TRANSIKA_API_URL/v1/sandbox/statements/export?from=2026-01-01&to=2026-01-31&format=pdf" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY"
+```
+
+`format` may be `csv`, `xlsx`, or `pdf`. PDF mirrors the dashboard statement
+layout. The dashboard **Transactions** page links to Statements for the same
+API.
+
+## Related
+
+- [tGHS treasury](/guides/tghs-treasury)
+- OpenAPI: `GET /statements`, `GET /statements/export`

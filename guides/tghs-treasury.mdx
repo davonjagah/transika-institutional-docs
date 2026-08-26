@@ -33,6 +33,11 @@ tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KY
   <Step title="Track status with your reference or receipt id">
     Poll `GET /tghs/redemptions` or `GET /tghs/redemptions/{id}` (and optionally `POST .../refresh`) until `completed` or a terminal failure. Environment is the only switch between Test and Live.
   </Step>
+  <Step title="Reconcile with a period statement">
+    Use `GET /statements?from=&to=` (or **Transactions → Account statements** in
+    the dashboard) for credit/debit/reversal lines with opening and closing
+    balances. Export CSV, Excel, or PDF via `GET /statements/export`.
+  </Step>
 </Steps>
 
 ## Read your balance

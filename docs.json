@@ -3,15 +3,15 @@
   "theme": "palm",
   "name": "Transika",
   "colors": {
-    "primary": "#15803D",
-    "light": "#22C55E",
-    "dark": "#16A34A"
+    "primary": "#453CCC",
+    "light": "#5B54E0",
+    "dark": "#3932A8"
   },
   "logo": {
-    "light": "/assets/icon.svg",
-    "dark": "/assets/icon.svg"
+    "light": "/assets/logo.png",
+    "dark": "/assets/logo-on-dark.png"
   },
-  "favicon": "/assets/icon.svg",
+  "favicon": "/assets/icon.png",
   "icons": {
     "library": "lucide"
   },
@@ -45,6 +45,7 @@
             "pages": [
               "guides/beneficiaries",
               "guides/tghs-treasury",
+              "guides/statements",
               "guides/webhooks",
               "guides/sandbox-testing"
             ]
@@ -71,6 +72,11 @@
             "group": "Transactions",
             "openapi": "openapi.yaml",
             "pages": ["GET /transactions"]
+          },
+          {
+            "group": "Statements",
+            "openapi": "openapi.yaml",
+            "pages": ["GET /statements", "GET /statements/export"]
           },
           {
             "group": "tGHS",
