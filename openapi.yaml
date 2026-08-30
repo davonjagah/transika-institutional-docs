@@ -432,9 +432,11 @@ paths:
       description: |
         Requires approved KYB/KYC and `api:read` (or legacy `transactions:read`).
         Returns an account statement issued by Transika Ltd. Reconstructs
-        opening, running, and closing balances from settled
+        opening, running, and closing balances from
         FX conversion/GHS Provisioning (OTC/admin mint), Disbursement
-        (completed or reissued redemption), and Reversal (reissue mint) lines.
+        (any redemption with burn confirmed, including `payout_failed`), and
+        Reversal (reissue mint) lines. Disbursements are booked at burn time so
+        statement balance tracks tGHS that left the wallet.
         `reference` is Transika’s id for FX/reversal lines and the
         merchant-provided payout reference for disbursements. Commission is always
         `0.00`. Period `from`/`to` are `YYYY-MM-DD` (UTC day bounds); max span
@@ -1377,8 +1379,8 @@ components:
             - Disbursement
             - Reversal
           description: >
-            FX conversion/GHS Provisioning (mint), Disbursement (payout),
-            or Reversal (reissue remint).
+            FX conversion/GHS Provisioning (mint), Disbursement (burned payout,
+            including failed), or Reversal (reissue remint).
         credit: { $ref: "#/components/schemas/DecimalString" }
         debit: { $ref: "#/components/schemas/DecimalString" }
         commission:

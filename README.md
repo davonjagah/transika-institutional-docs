@@ -30,6 +30,27 @@ https://sbx-institutional-api.tran-sika.com
 
 Do not commit API keys or other credentials. Use example values such as `txk_test_REPLACE_ME` in documentation.
 
+## Architecture PDF
+
+Generate the Institutional system architecture pack (diagrams + writeups):
+
+```bash
+node scripts/generate-architecture-pdf.mjs
+```
+
+Output: `Transika-System-Architecture.pdf`
+
+## Go-live UAT PDFs
+
+Merchant Dashboard and Ops Admin checklists (shared helpers in `scripts/uat-pdf-kit.mjs`):
+
+```bash
+node scripts/generate-uat-golive-pdf.mjs
+node scripts/generate-admin-uat-golive-pdf.mjs
+```
+
+Outputs: `Transika-Go-Live-UAT.pdf`, `Transika-Admin-Go-Live-UAT.pdf`
+
 ## Content scope
 
 This site documents the merchant-facing API only. Internal operations endpoints, dashboard authentication flows, provider callbacks, and implementation details are outside its public scope.
