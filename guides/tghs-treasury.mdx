@@ -28,7 +28,7 @@ tGHS uses the `otc` feature entitlement. Your merchant must have approved KYB/KY
     Store a mobile money or bank beneficiary in the same environment as the balance.
   </Step>
   <Step title="Initiate a payout">
-    Submit `beneficiaryId`, `amount`, required BOG `originator` + `transaction`, and optionally your own `reference`, `idempotencyKey`, and `metadata`. Transika burns tGHS (real on-chain in Live; simulated with a BaseScan-style proof in Test), then disburses GHS to the beneficiary.
+    Submit `beneficiaryId`, `amount`, and optionally `senderDetails`, `reference`, `idempotencyKey`, and `metadata`. Transika burns tGHS (real on-chain in Live; simulated with a BaseScan-style proof in Test), then disburses GHS to the beneficiary.
   </Step>
   <Step title="Track status with your reference or receipt id">
     Poll `GET /tghs/redemptions` or `GET /tghs/redemptions/{id}` (and optionally `POST .../refresh`) until `completed` or a terminal failure. Environment is the only switch between Test and Live.
@@ -134,19 +134,11 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
     "beneficiaryId": "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f",
     "reference": "INV-10000-9460",
     "idempotencyKey": "payout-inv-10000-9460-1",
-    "originator": {
-      "fullName": "Ama Mensah",
-      "customerReference": "CUST-77821",
-      "country": "GB",
-      "city": "London",
-      "dateOfBirth": "1990-04-12"
-    },
-    "transaction": {
-      "transactionId": "PARTNER-77821",
-      "amount": 10000,
-      "currency": "GHS",
-      "purpose": "family_support",
-      "transactionTimestamp": "2026-08-08T16:29:00.000Z"
+    "senderDetails": {
+      "senderName": "Ama Mensah",
+      "idType": "passport",
+      "idNumber": "G1234567",
+      "purpose": "family_support"
     }
   }'
 ```
@@ -155,8 +147,8 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
 | --- | --- | --- |
 | `amount` | Yes | At most 2 decimal places; must not exceed available balance |
 | `beneficiaryId` | Yes | Same environment as the balance |
-| `originator` | Yes | BOG remitter: `fullName`, `customerReference`, `country`, `city`, plus `dateOfBirth` or `legalEntityId` |
-| `transaction` | Yes | BOG transaction: `transactionId`, `amount` (must match), `currency`, `purpose`, `transactionTimestamp` |
+| `senderDetails` | No | Remitter: `senderName` (required when block present), optional `idType` + `idNumber`, `transactionType`, `remittance`, `purpose` |
+| `transaction` | No | Legacy transaction block (`transactionId`, `amount`, `currency`, `purpose`, `transactionTimestamp`) |
 | `beneficiary` | — | Returned on the redemption (not sent on create). Snapshot from linked `beneficiaryId`: `fullName`, `customerReference`, `country: ghana` |
 | `reference` | No | Your correlation id (max 64). Returned as `reference` on the redemption. |
 | `idempotencyKey` | No | Retry key (8–64 chars). Same merchant + environment + key returns the existing redemption. |

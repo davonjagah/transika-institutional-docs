@@ -84,9 +84,9 @@ paths:
       description: |
         Name enquiry only — does not save a beneficiary. Requires approved KYB/KYC and `api:read`.
 
-        **Test** returns a simulated `accountName` (`TEST {networkCode} {last4}`) so you can integrate without a live rail call.
+        **Test** tries Transika Payout Service (TPS) `POST /api/v1/resolve` when TPS is the active rail. If that succeeds, `accountName` is the TPS holder name. If TPS fails, Hubtel returns a simulated `TEST {networkCode} {last4}` name (no Hubtel network call).
 
-        **Live** queries the Ghana payout rail for MoMo and bank accounts and returns the registered holder name. Unverifiable accounts or rail failures return `422` or `502` with message `Name enquiry failed`; Transika does not invent a name.
+        **Live** calls TPS resolve first when TPS is the active rail, then Hubtel Verification if TPS fails. Unverifiable accounts or rail failures return `422` or `502` with message `Name enquiry failed`; Transika does not invent a name.
       requestBody:
         required: true
         content:
@@ -793,19 +793,11 @@ paths:
               beneficiaryId: "d64cb955-01c7-4a10-b1bf-1479ebb6fa9f"
               reference: "INV-10000-9460"
               idempotencyKey: "payout-inv-10000-9460-1"
-              originator:
-                fullName: "Ama Mensah"
-                customerReference: "CUST-77821"
-                country: GB
-                city: London
-                address: "14 Borough High Street"
-                dateOfBirth: "1990-04-12"
-              transaction:
-                transactionId: "PARTNER-77821"
-                amount: 10000
-                currency: GHS
+              senderDetails:
+                senderName: "Ama Mensah"
+                idType: passport
+                idNumber: "G1234567"
                 purpose: "family_support"
-                transactionTimestamp: "2026-08-08T16:29:00.000Z"
               metadata:
                 partnerTxnId: "PARTNER-77821"
       responses:
@@ -1486,7 +1478,7 @@ components:
         payoutLabel: { type: [string, "null"] }
         sender:
           oneOf:
-            - { $ref: "#/components/schemas/BogOriginator" }
+            - { $ref: "#/components/schemas/PayoutSenderDetails" }
             - { type: "null" }
         metadata:
           oneOf:
@@ -1542,13 +1534,32 @@ components:
                     mint: { type: integer, minimum: 0 }
                     payout: { type: integer, minimum: 0 }
                     failed: { type: integer, minimum: 0 }
+    PayoutSenderDetails:
+      type: object
+      additionalProperties: false
+      required: [senderName]
+      description: Optional remitter / sender details on payout create.
+      properties:
+        senderName: { type: string, minLength: 1, maxLength: 200 }
+        idType:
+          type: string
+          enum: [passport, national_id, drivers_license, other]
+        idNumber: { type: string, minLength: 1, maxLength: 64 }
+        transactionType: { type: string, minLength: 1, maxLength: 64 }
+        remittance: { type: string, minLength: 1, maxLength: 200 }
+        currency: { type: string, minLength: 1, maxLength: 16 }
+        amount:
+          oneOf:
+            - { type: number }
+            - { type: string }
+        purpose: { type: string, minLength: 1, maxLength: 200 }
     BogOriginator:
       type: object
       additionalProperties: false
       required: [fullName, customerReference, country, city]
       description: |
-        Required remitter / originator for BOG reporting. Provide `dateOfBirth`
-        (individual) or `legalEntityId` (entity).
+        Internal BOG reporting wire shape for remitter data (not accepted on payout create).
+        Provide `dateOfBirth` (individual) or `legalEntityId` (entity) when mapping to reports.
       properties:
         fullName: { type: string, minLength: 1, maxLength: 200 }
         customerReference: { type: string, minLength: 1, maxLength: 64 }
@@ -1561,7 +1572,7 @@ components:
       type: object
       additionalProperties: false
       required: [transactionId, amount, currency, purpose, transactionTimestamp]
-      description: Required transaction block for BOG reporting (`amount` must match payout amount).
+      description: Optional legacy transaction block (`amount` should match payout amount when provided).
       properties:
         transactionId: { type: string, minLength: 1, maxLength: 64 }
         amount:
@@ -1593,7 +1604,7 @@ components:
     TghsPayoutRequest:
       type: object
       additionalProperties: false
-      required: [amount, beneficiaryId, originator, transaction]
+      required: [amount, beneficiaryId]
       properties:
         amount:
           type: number
@@ -1610,8 +1621,8 @@ components:
           minLength: 8
           maxLength: 64
           description: Optional retry key. The same merchant, environment, and key returns the existing payout or redemption instead of creating a duplicate.
-        originator:
-          $ref: "#/components/schemas/BogOriginator"
+        senderDetails:
+          $ref: "#/components/schemas/PayoutSenderDetails"
         transaction:
           $ref: "#/components/schemas/BogTransaction"
         metadata:
@@ -1647,11 +1658,7 @@ components:
         reference: { type: [string, "null"] }
         sender:
           oneOf:
-            - { $ref: "#/components/schemas/BogOriginator" }
-            - { type: "null" }
-        originator:
-          oneOf:
-            - { $ref: "#/components/schemas/BogOriginator" }
+            - { $ref: "#/components/schemas/PayoutSenderDetails" }
             - { type: "null" }
         transaction:
           oneOf:

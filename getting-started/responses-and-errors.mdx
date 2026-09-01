@@ -43,7 +43,7 @@ Errors use the same top-level shape:
 
 `errors` is optional and may contain structured details such as an application code or field context. Do not assume it exists on every error.
 
-`message` is safe for end users and integrators: validation and business errors are specific (for example `originator.fullName is required` or `Insufficient tGHS balance`). Unexpected server failures use a generic message and never leak internal URLs, stack traces, or provider plumbing. Payout receipt `failureReason` values follow the same rule.
+`message` is safe for end users and integrators: validation and business errors are specific (for example `senderDetails.senderName is required` or `Insufficient tGHS balance`). Unexpected server failures use a generic message and never leak internal URLs, stack traces, or provider plumbing. Payout receipt `failureReason` values follow the same rule.
 
 ## HTTP status codes
 

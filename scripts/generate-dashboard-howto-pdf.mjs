@@ -453,7 +453,7 @@ steps([
   "tGHS -> Pay.",
   "Enter amount (tGHS and GHS are 1:1).",
   "Select a beneficiary.",
-  "Complete originator / transaction fields as required.",
+  "Complete senderDetails fields as needed.",
   "Submit. tGHS is burned and Ghana payout is initiated.",
   "Open the payout receipt to track burn hash and status; Refresh if needed.",
 ]);
