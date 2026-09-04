@@ -169,8 +169,8 @@ approved → burn_submitted → burn_confirmed → payout_pending → completed
 | `burn_confirmed` | Burn confirmed; Ghana payout is starting |
 | `payout_pending` | Ghana disbursement is in progress |
 | `completed` | Beneficiary payout succeeded |
-| `burn_failed` | Burn failed; Test ledger balance is restored |
-| `payout_failed` | Burn succeeded but Ghana payout failed; contact Transika (no auto restore) |
+| `burn_failed` | Terminal — burn failed; Ghana never sent; balance not reduced ([details](/guides/tghs-payout-failures)) |
+| `payout_failed` | Terminal — burn succeeded; Ghana not delivered after rail exhaustion; safe to refund your customer ([details](/guides/tghs-payout-failures)) |
 
 Create returns `approved` and enqueues the burn. Listen for `tghs.payout.burn_submitted` (or poll / `refresh`) until terminal:
 

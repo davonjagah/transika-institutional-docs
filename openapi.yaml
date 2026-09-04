@@ -1581,7 +1581,13 @@ components:
       properties:
         fullName: { type: string, minLength: 1, maxLength: 200 }
         customerReference: { type: string, minLength: 1, maxLength: 64 }
-        country: { type: string, minLength: 2, maxLength: 2, description: ISO-3166-1 alpha-2 }
+        country:
+          {
+            type: string,
+            minLength: 2,
+            maxLength: 2,
+            description: ISO-3166-1 alpha-2,
+          }
         city: { type: string, minLength: 1, maxLength: 100 }
         address: { type: string, minLength: 1, maxLength: 500 }
         dateOfBirth: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
@@ -1691,7 +1697,18 @@ components:
         paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
         status:
           type: string
-          enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed, reissued]
+          enum:
+            [
+              requested,
+              approved,
+              burn_submitted,
+              burn_confirmed,
+              burn_failed,
+              payout_pending,
+              payout_failed,
+              completed,
+              reissued,
+            ]
         burnTxHash: { type: [string, "null"] }
         burnExplorerUrl: { type: [string, "null"], format: uri }
         failureReason: { type: [string, "null"] }
@@ -1764,7 +1781,17 @@ components:
           description: >
             Create returns `approved` (burn queued). Worker advances to
             `burn_submitted`, then confirmation and Ghana payout states.
-          enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed]
+          enum:
+            [
+              requested,
+              approved,
+              burn_submitted,
+              burn_confirmed,
+              burn_failed,
+              payout_pending,
+              payout_failed,
+              completed,
+            ]
         burnTxHash: { type: [string, "null"] }
         burnExplorerUrl: { type: [string, "null"], format: uri }
         failureReason: { type: [string, "null"] }

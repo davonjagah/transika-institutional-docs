@@ -1,0 +1,220 @@
+---
+title: "Payout failures"
+description: "Terminal tGHS payout statuses (burn_failed, payout_failed), sample responses, and sender requirements."
+keywords: ["burn_failed", "payout_failed", "tGHS payout", "sender", "refund", "polling"]
+---
+
+When a payout does not complete, the receipt status becomes **`burn_failed`** or **`payout_failed`**. These are **receipt statuses** — not HTTP error codes. Poll `GET /v1/tghs/redemptions/{id}` or listen for webhooks until you reach a terminal status.
+
+See also: [tGHS treasury](/guides/tghs-treasury) (lifecycle overview), [Webhooks](/guides/webhooks).
+
+## HTTP vs receipt status
+
+| Call | HTTP | Read status from |
+| --- | --- | --- |
+| `POST /v1/tghs/payout` | `201` / `200` | `data.status` (usually `approved`) |
+| `GET /v1/tghs/redemptions/{id}` | `200` | `data.status` |
+| `POST /v1/tghs/redemptions/{id}/refresh` | `200` | `data.status` |
+
+Invalid body keys or missing required fields return **422** with `status: "error"`.
+
+## In-flight vs terminal
+
+```text
+approved → burn_submitted → burn_confirmed → payout_pending → completed
+                 ↘ burn_failed                 ↘ payout_failed
+```
+
+**Keep polling or use webhooks** while the receipt is in-flight (`approved` through `payout_pending`).
+
+**Treat the payout as finished** when status is `completed`, `burn_failed`, or `payout_failed`.
+
+### `burn_failed` — final
+
+- **Terminal** — polling will not recover this receipt after an outage.
+- **Ghana payment was never sent.**
+- **Your tGHS balance was not reduced** (Live: burn never confirmed on-chain; Test: ledger debit is restored).
+- **Your action:** fail the payout on your side. To retry, create a **new** payout with a **new `idempotencyKey`**.
+- **Webhook:** `tghs.payout.burn_failed`
+
+### `payout_failed` — final
+
+- **Terminal** for your integration.
+- **tGHS was burned** — your balance was reduced.
+- **Ghana payment was not delivered** — Transika exhausted disbursement on the configured payout rails for that attempt.
+- **Your action:** you may **fail the transaction and refund your customer**. No further Ghana credit will arrive on this redemption unless Transika ops retries or reissues (you would see `completed` or `reissued`, not a silent flip from `payout_failed`).
+- **Webhook:** `tghs.payout.payout_failed`
+
+| Status | tGHS consumed? | Ghana paid? | Refund your customer? |
+| --- | --- | --- | --- |
+| `burn_failed` | No | No | Yes |
+| `payout_failed` | Yes | No | Yes |
+
+## Create payout and `sender`
+
+Required on `POST /v1/tghs/payout`:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `amount` | Yes | GHS |
+| `beneficiaryId` | Yes | Same environment as balance |
+| `reference` | Yes | Your correlation id (max 64) |
+| `idempotencyKey` | Yes | 8–64 chars; dedupes create |
+
+Optional `sender` captures remitter KYC for Bank of Ghana reporting. The create body is **strict** — use top-level **`sender`**, not `senderDetails` or a legacy `transaction` block.
+
+When `sender` is present:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `fullName` | Yes\* | Or use `firstName` + `lastName` together |
+| `idType` | With `idNumber` | `passport`, `national_id`, `drivers_license`, `other` |
+| `idNumber` | With `idType` | Must be sent together |
+| `purpose`, `transactionType`, `remittance` | No | Compliance / partner notes |
+| `currency`, `amount` | No | Origin currency (e.g. `EUR`, `USD`) and origin amount; independent of GHS payout |
+| `country`, address fields, `phone`, `email`, `dateOfBirth`, `idCountry`, `nationality` | No | Extended KYC |
+
+\*Required when the `sender` block is present: `fullName`, or both `firstName` and `lastName`.
+
+```json
+{
+  "amount": 5.00,
+  "beneficiaryId": "6efd9aee-bc48-4a4c-bc41-183f9fbd8c3b",
+  "reference": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+  "idempotencyKey": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+  "sender": {
+    "fullName": "Abe Melo",
+    "idType": "national_id",
+    "idNumber": "02644338239",
+    "purpose": "family_support"
+  }
+}
+```
+
+- **POST create** returns `sender` when you supplied it.
+- **GET** redemptions omit sender PII and return `senderProvided: true` when KYC was stored.
+- **Webhooks** include full `sender` on `data.payout`.
+
+## Sample responses
+
+All successful reads use HTTP **200** and this envelope:
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": { }
+}
+```
+
+### Create — `approved`
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+    "environment": "live",
+    "amount": "5.00",
+    "beneficiaryId": "6efd9aee-bc48-4a4c-bc41-183f9fbd8c3b",
+    "reference": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+    "status": "approved",
+    "burnTxHash": null,
+    "failureReason": null,
+    "senderProvided": true,
+    "createdAt": "2026-09-02T12:47:43.774Z",
+    "updatedAt": "2026-09-02T12:47:43.774Z"
+  }
+}
+```
+
+### Poll — `burn_failed`
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+    "environment": "live",
+    "amount": "5.00",
+    "beneficiaryId": "6efd9aee-bc48-4a4c-bc41-183f9fbd8c3b",
+    "reference": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+    "status": "burn_failed",
+    "burnTxHash": null,
+    "burnExplorerUrl": null,
+    "failureReason": "Circle burn submission failed",
+    "burnConfirmedAt": null,
+    "completedAt": null,
+    "senderProvided": true,
+    "createdAt": "2026-09-02T12:47:43.774Z",
+    "updatedAt": "2026-09-02T12:48:05.110Z"
+  }
+}
+```
+
+### Poll — `payout_failed`
+
+```json
+{
+  "status": "success",
+  "message": "success",
+  "data": {
+    "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+    "environment": "live",
+    "amount": "5.00",
+    "beneficiaryId": "6efd9aee-bc48-4a4c-bc41-183f9fbd8c3b",
+    "reference": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+    "status": "payout_failed",
+    "burnTxHash": "0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+    "burnExplorerUrl": "https://basescan.org/tx/0x49324ec2f1b310e5ffcae5a861fcd27fdababd46ea1260426ca77ee62ba44db6",
+    "failureReason": "Ghana payout failed",
+    "burnConfirmedAt": "2026-09-02T12:48:01.727Z",
+    "completedAt": null,
+    "senderProvided": true,
+    "createdAt": "2026-09-02T12:47:43.774Z",
+    "updatedAt": "2026-09-02T12:48:22.110Z"
+  }
+}
+```
+
+### Webhook — failure events
+
+```json
+{
+  "type": "tghs.payout.burn_failed",
+  "environment": "live",
+  "data": {
+    "payout": {
+      "id": "9ce685a9-5886-4de6-871a-041bdb95f592",
+      "reference": "b3e7f942-6a1d-4c8b-9f5e-2d8a4c1b7e6f",
+      "status": "burn_failed",
+      "amount": "5.00",
+      "failureReason": "Circle burn submission failed",
+      "sender": {
+        "fullName": "Abe Melo",
+        "idType": "national_id",
+        "idNumber": "02644338239"
+      }
+    }
+  }
+}
+```
+
+For `tghs.payout.payout_failed`, the same shape applies with `status: "payout_failed"` and `burnTxHash` populated.
+
+### Validation error (422)
+
+```json
+{
+  "status": "error",
+  "message": "Unrecognized key(s) in object: 'senderDetails'",
+  "errors": {},
+  "data": null
+}
+```
+
+## Test: force `payout_failed`
+
+In Test only, pass `"simulateFailure": true` on create. The simulated burn succeeds and the Ghana leg is forced to fail so you can map `payout_failed` without a live rail outage.

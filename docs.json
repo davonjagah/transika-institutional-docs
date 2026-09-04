@@ -45,6 +45,7 @@
             "pages": [
               "guides/beneficiaries",
               "guides/tghs-treasury",
+              "guides/tghs-payout-failures",
               "guides/statements",
               "guides/webhooks",
               "guides/sandbox-testing"
