@@ -34,6 +34,7 @@ approved → burn_submitted → burn_confirmed → payout_pending → completed
 - **Terminal** — polling will not recover this receipt after an outage.
 - **Ghana payment was never sent.**
 - **Your tGHS balance was not reduced** (Live: burn never confirmed on-chain; Test: ledger debit is restored).
+- **Keep polling while status is `approved`.** Concurrent Live payouts from the same merchant are packed into one Circle transaction (then Ghana pays out each). That is not `burn_failed`.
 - **Your action:** fail the payout on your side. To retry, create a **new** payout with a **new `idempotencyKey`**.
 - **Webhook:** `tghs.payout.burn_failed`
 

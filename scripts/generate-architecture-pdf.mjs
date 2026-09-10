@@ -460,7 +460,7 @@ h2("Background jobs");
 bullets([
   "webhook-deliver / webhook-delivery-sweep",
   "transika-pending-sweep (and legacy hubtel sweep)",
-  "circle-tghs-redemption-sweep · tghs-redemption-burn",
+  "circle-tghs-redemption-sweep · tghs-redemption-burn · tghs-redemption-burn-drain",
 ]);
 
 // ─── 5 ───────────────────────────────────────────────────────────────────

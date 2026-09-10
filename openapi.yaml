@@ -1779,8 +1779,10 @@ components:
         status:
           type: string
           description: >
-            Create returns `approved` (burn queued). Worker advances to
-            `burn_submitted`, then confirmation and Ghana payout states.
+            Create returns `approved` (burn queued). Live: each create is
+            one request; a per-merchant delayed drain packs waiting payouts
+            into one Circle transaction. Worker then advances to
+            `burn_submitted`, confirmation, and Ghana payout states.
           enum:
             [
               requested,
