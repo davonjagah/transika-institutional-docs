@@ -164,7 +164,7 @@ approved → burn_submitted → burn_confirmed → payout_pending → completed
 
 | Status | Meaning |
 | --- | --- |
-| `approved` | Request accepted; burn is queued. Live: each create is still one request — a per-merchant delayed drain packs waiting payouts into one Circle transaction after a short quiet window. |
+| `approved` | Request accepted; burn is queued. Live: each create is still one request — a per-merchant delayed drain packs waiting payouts into one Circle transaction after a short quiet window. Receipts that were linked to a Circle transaction which does not contain their on-chain Redeem stay `approved` until the next drain. |
 | `burn_submitted` | Burn submitted (real in Live; simulated BaseScan proof in Test) |
 | `burn_confirmed` | Burn confirmed; Ghana payout is starting |
 | `payout_pending` | Ghana disbursement is in progress |
