@@ -17,9 +17,9 @@ treasury endpoints. Environment is not printed on the statement document.
 
 | Description | Meaning | Transaction ID | Reference |
 | ----------- | ------- | -------------- | --------- |
-| `FX conversion/GHS Provisioning` | OTC or admin mint executed | Mint request id | Transika reference (trade / ledger / mint id) |
+| `FX conversion/GHS Provisioning` | OTC or admin mint executed (not tied to a remint) | Mint request id | Transika reference (trade / ledger / mint id) |
 | `Disbursement` | tGHS burned for a payout (including failed or not-yet-reissued) | Redemption id | Your provided payout reference |
-| `Reversal` | Ops reissue mint restoring tGHS after a failed payout | Mint request id | Transika reference |
+| `Reversal` | Remint restoring tGHS after a failed payout (`kind` reissue, or any mint linked as remint) | Mint request id | Transika reference |
 
 Commission is always `0.00` in the current release. A burned-then-reissued payout
 shows as Disbursement at burn time and Reversal when reminted (net zero after remint).
