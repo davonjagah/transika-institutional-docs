@@ -14,12 +14,16 @@ OTC desk activity runs in the Transika dashboard and is notified by email and in
 | --- | --- |
 | `webhook.test` | You call the test endpoint |
 | `tghs.payout.created` | Payout / redemption accepted (`approved`) |
-| `tghs.payout.burn_submitted` | Burn submitted by the background worker (real chain in Live; simulated in Test) |
-| `tghs.payout.burn_confirmed` | Burn confirmed |
+| `tghs.payout.burn_submitted` | Test only. Simulated burn submitted. Not sent in Live. |
+| `tghs.payout.burn_confirmed` | Burn confirmed on chain. `data.payout.status` is the payout's current status (in Live usually `completed`); this event never changes it. |
 | `tghs.payout.payout_pending` | Ghana disbursement started |
 | `tghs.payout.completed` | Beneficiary payout succeeded |
-| `tghs.payout.burn_failed` | Burn failed |
-| `tghs.payout.payout_failed` | Ghana payout failed after burn |
+| `tghs.payout.burn_failed` | Burn failed before any payout was sent |
+| `tghs.payout.payout_failed` | Ghana payout failed |
+
+<Note>
+In Live, the Ghana payout can start before its burn is confirmed. `tghs.payout.completed` may therefore arrive with `burnTxHash` and `burnConfirmedAt` set to `null`. A `tghs.payout.burn_confirmed` event follows when the burn lands, carrying the same `status` (for example `completed`) with `burnTxHash` and `burnConfirmedAt` filled in. Treat `completed` as final; never move a payout's status because of `burn_confirmed`.
+</Note>
 
 Subscribe with `tghs.payout.*`, an exact event name, or `*`. An empty or omitted `events` array receives all events that are emitted to merchant HTTP webhooks. Test and Live use the **same event names and redemption-shaped `data.payout`**; create separate endpoints (or use environment) for each mode.
 

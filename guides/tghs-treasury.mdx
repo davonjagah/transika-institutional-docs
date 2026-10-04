@@ -57,6 +57,8 @@ Example response:
     "asset": "tGHS",
     "environment": "test",
     "balance": "46550.00",
+    "pendingBurn": "0.00",
+    "spendable": "46550.00",
     "wallet": {
       "address": "0x5e31676da4527b910fa1799635d0291ee2727a00",
       "network": "base",
@@ -72,7 +74,15 @@ Example response:
 }
 ```
 
-Treat the returned balance as authoritative for the selected environment. Amounts and balances are decimal strings with exactly **2** fractional digits (e.g. `"10000.00"`). Requests may include at most 2 decimal places.
+Treat the returned balance as authoritative for the selected environment.
+
+| Field | Meaning |
+| --- | --- |
+| `balance` | tGHS held in your managed wallet |
+| `pendingBurn` | Live: total of payouts already accepted whose burn has not been confirmed yet. Always `"0.00"` in Test. |
+| `spendable` | `balance − pendingBurn`. The most you can pay out right now. A payout above it returns `422 Insufficient tGHS balance`. |
+
+`pendingBurn` and `spendable` are `null` when the chain cannot be read for a moment; retry shortly. Amounts and balances are decimal strings with exactly **2** fractional digits (e.g. `"10000.00"`). Requests may include at most 2 decimal places.
 
 ### On-chain proof of balance
 
@@ -157,22 +167,33 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \
 
 `POST /v1/tghs/payout` creates a redemption in both environments.
 
+Live:
+
+```text
+approved → payout_pending → completed
+     ↘ burn_failed      ↘ payout_failed → reissued
+```
+
+Test (sandbox):
+
 ```text
 approved → burn_submitted → burn_confirmed → payout_pending → completed
                  ↘ burn_failed                 ↘ payout_failed
 ```
 
+In Live, `status` tracks the Ghana payout only. Every payout is backed by a burn of the same amount, but the payout can start before that burn is confirmed. The amount stays reserved (see `pendingBurn` above) until the burn lands, and you then receive `tghs.payout.burn_confirmed` with `status` unchanged.
+
 | Status | Meaning |
 | --- | --- |
 | `approved` | Request accepted; burn is queued. Live: each create is one redemption and drains immediately. If several payouts are already waiting, they may share one Circle transaction. Receipts that were linked to a Circle transaction which does not contain their on-chain Redeem stay `approved` until the next drain. |
-| `burn_submitted` | Burn submitted (real in Live; simulated BaseScan proof in Test) |
-| `burn_confirmed` | Burn confirmed; Ghana payout is starting |
+| `burn_submitted` | Test only. Simulated burn submitted |
+| `burn_confirmed` | Test only. Simulated burn confirmed; Ghana payout is starting |
 | `payout_pending` | Ghana disbursement is in progress |
 | `completed` | Beneficiary payout succeeded |
 | `burn_failed` | Terminal — burn failed; Ghana never sent; balance not reduced ([details](/guides/tghs-payout-failures)) |
 | `payout_failed` | Terminal — burn succeeded; Ghana not delivered after rail exhaustion; safe to refund your customer ([details](/guides/tghs-payout-failures)) |
 
-Create returns `approved` and enqueues the burn. Listen for `tghs.payout.burn_submitted` (or poll / `refresh`) until terminal:
+Create returns `approved`. Listen for webhooks (or poll / `refresh`) until terminal:
 
 ```bash
 curl -X POST "$TRANSIKA_API_URL/v1/sandbox/tghs/payout" \

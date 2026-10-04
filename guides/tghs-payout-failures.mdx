@@ -21,8 +21,11 @@ Invalid body keys or missing required fields return **422** with `status: "error
 ## In-flight vs terminal
 
 ```text
-approved → burn_submitted → burn_confirmed → payout_pending → completed
-                 ↘ burn_failed                 ↘ payout_failed
+Live:  approved → payout_pending → completed
+            ↘ burn_failed      ↘ payout_failed
+
+Test:  approved → burn_submitted → burn_confirmed → payout_pending → completed
+                       ↘ burn_failed                 ↘ payout_failed
 ```
 
 **Keep polling or use webhooks** while the receipt is in-flight (`approved` through `payout_pending`).

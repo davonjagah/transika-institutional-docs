@@ -544,6 +544,8 @@ paths:
                   asset: tGHS
                   environment: test
                   balance: "46550.00"
+                  pendingBurn: "0.00"
+                  spendable: "46550.00"
                   wallet:
                     address: "0x5e31676da4527b910fa1799635d0291ee2727a00"
                     network: base
@@ -774,12 +776,16 @@ paths:
       summary: Request a tGHS payout
       description: |
         Creates a redemption in Test or Live (environment is the switch).
-        Requires sufficient balance, an environment-matched beneficiary,
-        approved KYB/KYC, `otc`, and `api:write`. Returns `approved` immediately
-        and enqueues burn submission on the background worker (`tghs.payout.created`
-        then `tghs.payout.burn_submitted`). Test simulates burn with a
-        BaseScan-style proof; Live burns on-chain. Then Ghana disbursement
-        runs. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
+        Requires `amount` within your spendable balance (`GET /tghs` →
+        `spendable`), an environment-matched beneficiary, approved KYB/KYC,
+        `otc`, and `api:write`. Returns `approved` immediately
+        (`tghs.payout.created`). Live: the Ghana payout may start before the
+        on-chain burn confirms; the amount stays reserved until it does, then
+        `tghs.payout.burn_confirmed` is sent without changing `status`. Test
+        simulates the burn first (`burn_submitted`, `burn_confirmed`). A `503`
+        with code `tghs_redemption_contention` means too many payouts hit the
+        account at once; nothing was created, so retry the same request with
+        the same `idempotencyKey`. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
         `POST .../refresh`, or listen for webhooks, until `completed` or a
         terminal failure.
       requestBody:
@@ -1519,7 +1525,17 @@ components:
                 balance:
                   allOf:
                     - $ref: "#/components/schemas/DecimalString"
-                  description: Available tGHS balance for the selected environment.
+                  description: tGHS held in the managed wallet for the selected environment.
+                pendingBurn:
+                  oneOf:
+                    - $ref: "#/components/schemas/DecimalString"
+                    - { type: "null" }
+                  description: Live only (always "0.00" in Test). Total of accepted payouts whose burn is not yet confirmed; reserved and not spendable. Null when the chain cannot be read.
+                spendable:
+                  oneOf:
+                    - $ref: "#/components/schemas/DecimalString"
+                    - { type: "null" }
+                  description: balance minus pendingBurn. The most that can be paid out now; larger payouts return 422 Insufficient tGHS balance. Null when the chain cannot be read.
                 wallet:
                   type: object
                   description: Managed account metadata returned for reconciliation.
@@ -1697,6 +1713,10 @@ components:
         paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
         status:
           type: string
+          description: >
+            Payout lifecycle. `burn_submitted` and `burn_confirmed` appear in
+            Test only; in Live the burn never changes `status`, and a payout can
+            be `completed` before `burnTxHash` is set.
           enum:
             [
               requested,
@@ -1779,10 +1799,10 @@ components:
         status:
           type: string
           description: >
-            Create returns `approved` (burn queued). Live: each create is
-            one request; a per-merchant delayed drain packs waiting payouts
-            into one Circle transaction. Worker then advances to
-            `burn_submitted`, confirmation, and Ghana payout states.
+            Create returns `approved`. Live: status tracks the Ghana payout
+            only (`approved` → `payout_pending` → `completed`); the burn may
+            confirm after `completed` and never changes `status`. Test also
+            shows `burn_submitted` and `burn_confirmed`.
           enum:
             [
               requested,
