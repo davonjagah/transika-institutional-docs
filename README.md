@@ -22,7 +22,7 @@ npm run check:a11y
 Transika uses one API origin with environment-specific route prefixes:
 
 ```text
-https://sbx-institutional-api.tran-sika.com
+https://institutional-api.tran-sika.com
 ```
 
 - Live requests use `/v1`.

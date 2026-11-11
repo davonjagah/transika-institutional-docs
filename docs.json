@@ -119,7 +119,7 @@
       "autogenerate": true
     },
     "mdx": {
-      "server": "https://sbx-institutional-api.tran-sika.com/v1",
+      "server": "https://institutional-api.tran-sika.com/v1",
       "auth": {
         "method": "bearer"
       }
