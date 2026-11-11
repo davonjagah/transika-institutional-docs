@@ -16,7 +16,7 @@ Authorization: Bearer txk_test_REPLACE_ME
 ```
 
 ```bash
-curl "https://sbx-institutional-api.tran-sika.com/v1/sandbox/transactions" \
+curl "https://institutional-api.tran-sika.com/v1/sandbox/transactions" \
   --header "Authorization: Bearer ${TRANSIKA_API_KEY}" \
   --header "Accept: application/json"
 ```
@@ -51,7 +51,7 @@ When creating a key, choose its environment, grant the minimum required scope, a
 | Status | Typical cause |
 | --- | --- |
 | `400` | The key prefix does not match the live or sandbox path. |
-| `401` | The bearer token is missing, malformed, invalid, expired, or revoked. |
+| `401` | The bearer token is missing, malformed, invalid, expired, or revoked, or it was created by a dashboard user who has since been deactivated. |
 | `403` | The source IP is not whitelisted, the key lacks a required scope, KYB is not approved, or a feature is not entitled. |
 
 See [Response envelopes and errors](/getting-started/responses-and-errors) for the error body format.

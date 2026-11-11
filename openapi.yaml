@@ -16,15 +16,17 @@ info:
     nonmatching source IPs receive `403` with `errors.code` set to
     `api_key_ip_not_allowed`.
 servers:
-  - url: https://sbx-institutional-api.tran-sika.com/v1
+  - url: https://institutional-api.tran-sika.com/v1
     description: Live path (`txk_live_` keys). Origin is the current institutional host; confirm the production origin in your dashboard at cutover.
-  - url: https://sbx-institutional-api.tran-sika.com/v1/sandbox
+  - url: https://institutional-api.tran-sika.com/v1/sandbox
     description: Sandbox / Test path (`txk_test_` keys)
 tags:
   - name: Beneficiaries
     description: Ghana payout account discovery and storage.
   - name: Transactions
     description: Unified merchant treasury transaction history.
+  - name: Statements
+    description: Period tGHS ledger statements with opening/closing balance and exports.
   - name: tGHS
     description: Managed GHS balances, activity, and Ghana beneficiary payouts.
   - name: Webhooks
@@ -82,9 +84,9 @@ paths:
       description: |
         Name enquiry only — does not save a beneficiary. Requires approved KYB/KYC and `api:read`.
 
-        **Test** returns a simulated `accountName` (`TEST {networkCode} {last4}`) so you can integrate without a live rail call.
+        **Test** tries Transika Payout Service (TPS) `POST /api/v1/resolve` when TPS is the active rail. If that succeeds, `accountName` is the TPS holder name. If TPS fails, Hubtel returns a simulated `TEST {networkCode} {last4}` name (no Hubtel network call).
 
-        **Live** queries the Ghana payout rail for MoMo and bank accounts and returns the registered holder name. Unverifiable accounts or rail failures return `422` or `502` with message `Name enquiry failed`; Transika does not invent a name.
+        **Live** calls TPS resolve first when TPS is the active rail, then Hubtel Verification if TPS fails. Unverifiable accounts or rail failures return `422` or `502` with message `Name enquiry failed`; Transika does not invent a name.
       requestBody:
         required: true
         content:
@@ -422,6 +424,106 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
+  /statements:
+    get:
+      tags: [Statements]
+      operationId: getStatement
+      summary: Get tGHS period statement
+      description: |
+        Requires approved KYB/KYC and `api:read` (or legacy `transactions:read`).
+        Returns an account statement issued by Transika Ltd. Reconstructs
+        opening, running, and closing balances from
+        FX conversion/GHS Provisioning (OTC/admin mint), Disbursement
+        (any redemption with burn confirmed, including `payout_failed`), and
+        Reversal (reissue mint) lines. Disbursements are booked at burn time so
+        statement balance tracks tGHS that left the wallet.
+        `reference` is Transika’s id for FX/reversal lines and the
+        merchant-provided payout reference for disbursements. Commission is always
+        `0.00`. Period `from`/`to` are `YYYY-MM-DD` (UTC day bounds); max span
+        92 days. Environment is not included on the statement document.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-01-01"
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-01-31"
+      responses:
+        "200":
+          description: Statement header and lines.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message, data]
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Statement"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /statements/export:
+    get:
+      tags: [Statements]
+      operationId: exportStatement
+      summary: Export tGHS period statement
+      description: |
+        Same data as `GET /statements`, as a downloadable file.
+        `format` is `csv`, `xlsx`, or `pdf`.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [csv, xlsx, pdf]
+            default: csv
+      responses:
+        "200":
+          description: Statement file attachment.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /tghs:
     get:
       tags: [tGHS]
@@ -442,6 +544,8 @@ paths:
                   asset: tGHS
                   environment: test
                   balance: "46550.00"
+                  pendingBurn: "0.00"
+                  spendable: "46550.00"
                   wallet:
                     address: "0x5e31676da4527b910fa1799635d0291ee2727a00"
                     network: base
@@ -551,7 +655,7 @@ paths:
       parameters:
         - name: reference
           in: query
-          description: Exact match on the merchant payout reference.
+          description: Exact match on merchant `reference`, redemption id, idempotency key, or `transaction.transactionId`.
           schema:
             type: string
             minLength: 1
@@ -598,11 +702,15 @@ paths:
         Returns the merchant-owned redemption receipt, including lifecycle
         timestamps, burn transaction hash, and the matching Base or Base
         Sepolia explorer URL. Requires `api:read`.
+
+        The path value may be the redemption id, merchant `reference`,
+        `idempotencyKey`, or `transaction.transactionId`.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          description: Redemption id, reference, idempotency key, or transaction.transactionId.
+          schema: { type: string, minLength: 1, maxLength: 64 }
       responses:
         "200":
           description: Redemption receipt.
@@ -642,11 +750,15 @@ paths:
       description: |
         Re-checks burn status and resumes payout if needed. Does not submit a
         new burn. Requires `api:read`.
+
+        The path value may be the redemption id, merchant `reference`,
+        `idempotencyKey`, or `transaction.transactionId`.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          description: Redemption id, reference, idempotency key, or transaction.transactionId.
+          schema: { type: string, minLength: 1, maxLength: 64 }
       responses:
         "201":
           description: Reconciled redemption receipt.
@@ -664,12 +776,16 @@ paths:
       summary: Request a tGHS payout
       description: |
         Creates a redemption in Test or Live (environment is the switch).
-        Requires sufficient balance, an environment-matched beneficiary,
-        approved KYB/KYC, `otc`, and `api:write`. Returns `approved` immediately
-        and enqueues burn submission on the background worker (`tghs.payout.created`
-        then `tghs.payout.burn_submitted`). Test simulates burn with a
-        BaseScan-style proof; Live burns on-chain. Then Ghana disbursement
-        runs. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
+        Requires `amount` within your spendable balance (`GET /tghs` →
+        `spendable`), an environment-matched beneficiary, approved KYB/KYC,
+        `otc`, and `api:write`. Returns `approved` immediately
+        (`tghs.payout.created`). Live: the Ghana payout may start before the
+        on-chain burn confirms; the amount stays reserved until it does, then
+        `tghs.payout.burn_confirmed` is sent without changing `status`. Test
+        simulates the burn first (`burn_submitted`, `burn_confirmed`). A `503`
+        with code `tghs_redemption_contention` means too many payouts hit the
+        account at once; nothing was created, so retry the same request with
+        the same `idempotencyKey`. Poll `GET /tghs/redemptions/{id}` (or filter by `reference`) /
         `POST .../refresh`, or listen for webhooks, until `completed` or a
         terminal failure.
       requestBody:
@@ -685,17 +801,11 @@ paths:
               idempotencyKey: "payout-inv-10000-9460-1"
               sender:
                 fullName: "Ama Mensah"
-                country: GB
-                city: London
-                addressLine1: "14 Borough High Street"
-                phone: "+447700900123"
-                nationality: GH
                 idType: passport
-                idNumber: "C1234567"
-                idCountry: GB
+                idNumber: "G1234567"
+                purpose: "family_support"
               metadata:
                 partnerTxnId: "PARTNER-77821"
-                purpose: "family_support"
       responses:
         "201":
           description: Payout / redemption request accepted.
@@ -703,7 +813,7 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/TghsPayoutRecordResponse"
+                  - $ref: "#/components/schemas/TghsPayoutCreateResponse"
                   - $ref: "#/components/schemas/TghsPayoutResponse"
               examples:
                 testPayout:
@@ -962,7 +1072,7 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
           example:
             status: error
-            message: An error occurred
+            message: Something went wrong on our side. Please retry shortly or contact support.
             data: null
   schemas:
     Environment:
@@ -1237,8 +1347,101 @@ components:
                 limit: { type: integer, minimum: 1, maximum: 100 }
                 source: { type: string, const: treasury }
                 environment: { $ref: "#/components/schemas/Environment" }
+    StatementLine:
+      type: object
+      required:
+        [
+          dateTime,
+          transactionId,
+          reference,
+          description,
+          credit,
+          debit,
+          commission,
+          balance,
+        ]
+      properties:
+        dateTime: { $ref: "#/components/schemas/DateTime" }
+        transactionId:
+          type: string
+          description: Transika system id (mint request or redemption id).
+        reference:
+          type: [string, "null"]
+          description: >
+            Transika reference for credit/reversal (OTC trade id, ledger entry,
+            or mint id). Merchant-provided payout reference for debit.
+        description:
+          type: string
+          enum:
+            - FX conversion/GHS Provisioning
+            - Disbursement
+            - Reversal
+          description: >
+            FX conversion/GHS Provisioning (mint), Disbursement (burned payout,
+            including failed), or Reversal (reissue remint).
+        credit: { $ref: "#/components/schemas/DecimalString" }
+        debit: { $ref: "#/components/schemas/DecimalString" }
+        commission:
+          allOf:
+            - $ref: "#/components/schemas/DecimalString"
+          description: Always 0.00 until fees are productized.
+        balance: { $ref: "#/components/schemas/DecimalString" }
+    Statement:
+      type: object
+      required:
+        [
+          partnerName,
+          accountName,
+          accountNumber,
+          accountCurrency,
+          disbursalCurrency,
+          period,
+          openingBalance,
+          openingBalanceCurrency,
+          closingBalance,
+          closingBalanceCurrency,
+          lines,
+        ]
+      properties:
+        partnerName:
+          type: string
+          const: Transika Ltd
+          description: Statement issuer.
+        accountName:
+          type: string
+          description: Merchant org name (`merchants.name`).
+        accountNumber:
+          type: string
+          description: Merchant tGHS wallet address (registered SCA or synthetic display address).
+        accountCurrency: { type: string, const: tGHS }
+        disbursalCurrency: { type: string, const: GHS }
+        period:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        openingBalance: { $ref: "#/components/schemas/DecimalString" }
+        openingBalanceCurrency:
+          type: string
+          const: tGHS
+          description: Opening balance currency.
+        closingBalance:
+          allOf:
+            - $ref: "#/components/schemas/DecimalString"
+          description: Closing balance (1:1 with tGHS), reported in GHS.
+        closingBalanceCurrency:
+          type: string
+          const: GHS
+          description: Closing balance currency.
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/StatementLine" }
     TghsActivity:
       type: object
+      description: >
+        Ledger activity row. GET /tghs/activities omits sender KYC and payout
+        account numbers.
       required:
         [
           id,
@@ -1256,10 +1459,8 @@ components:
           beneficiaryId,
           paymentMode,
           paymentReference,
-          payoutAccountNumber,
           payoutBankName,
           payoutLabel,
-          sender,
           metadata,
           createdAt,
         ]
@@ -1279,13 +1480,16 @@ components:
         beneficiaryId: { type: [string, "null"] }
         paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
         paymentReference: { type: [string, "null"] }
-        payoutAccountNumber: { type: [string, "null"] }
+        payoutAccountNumber:
+          type: [string, "null"]
+          description: Omitted on merchant GET /tghs/activities (PII).
         payoutBankName: { type: [string, "null"] }
         payoutLabel: { type: [string, "null"] }
         sender:
           oneOf:
             - { $ref: "#/components/schemas/PayoutSender" }
             - { type: "null" }
+          description: Omitted on merchant GET /tghs/activities (PII).
         metadata:
           oneOf:
             - { $ref: "#/components/schemas/PayoutMetadata" }
@@ -1321,7 +1525,17 @@ components:
                 balance:
                   allOf:
                     - $ref: "#/components/schemas/DecimalString"
-                  description: Available tGHS balance for the selected environment.
+                  description: tGHS held in the managed wallet for the selected environment.
+                pendingBurn:
+                  oneOf:
+                    - $ref: "#/components/schemas/DecimalString"
+                    - { type: "null" }
+                  description: Live only (always "0.00" in Test). Total of accepted payouts whose burn is not yet confirmed; reserved and not spendable. Null when the chain cannot be read.
+                spendable:
+                  oneOf:
+                    - $ref: "#/components/schemas/DecimalString"
+                    - { type: "null" }
+                  description: balance minus pendingBurn. The most that can be paid out now; larger payouts return 422 Insufficient tGHS balance. Null when the chain cannot be read.
                 wallet:
                   type: object
                   description: Managed account metadata returned for reconciliation.
@@ -1343,15 +1557,24 @@ components:
     PayoutSender:
       type: object
       additionalProperties: false
-      description: |
-        Optional remitter / originator. When provided, include `fullName`
-        or both `firstName` and `lastName`. Stored on the payout or redemption
-        receipt for merchant reconciliation.
+      description: Optional remitter / sender on payout create.
       properties:
         fullName: { type: string, minLength: 1, maxLength: 200 }
         firstName: { type: string, minLength: 1, maxLength: 100 }
         lastName: { type: string, minLength: 1, maxLength: 100 }
-        country: { type: string, minLength: 2, maxLength: 2, description: ISO-3166-1 alpha-2 }
+        idType:
+          type: string
+          enum: [passport, national_id, drivers_license, other]
+        idNumber: { type: string, minLength: 1, maxLength: 64 }
+        transactionType: { type: string, minLength: 1, maxLength: 64 }
+        remittance: { type: string, minLength: 1, maxLength: 200 }
+        currency: { type: string, minLength: 1, maxLength: 16 }
+        amount:
+          oneOf:
+            - { type: number }
+            - { type: string }
+        purpose: { type: string, minLength: 1, maxLength: 200 }
+        country: { type: string, minLength: 2, maxLength: 2 }
         addressLine1: { type: string, minLength: 1, maxLength: 200 }
         addressLine2: { type: string, minLength: 1, maxLength: 200 }
         city: { type: string, minLength: 1, maxLength: 100 }
@@ -1359,13 +1582,60 @@ components:
         postalCode: { type: string, minLength: 1, maxLength: 32 }
         phone: { type: string, minLength: 1, maxLength: 32 }
         email: { type: string, format: email, maxLength: 200 }
-        dateOfBirth: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
-        idType:
+        dateOfBirth:
           type: string
-          enum: [passport, national_id, drivers_license, other]
-        idNumber: { type: string, minLength: 1, maxLength: 64 }
+          pattern: '^\d{4}-\d{2}-\d{2}$'
         idCountry: { type: string, minLength: 2, maxLength: 2 }
         nationality: { type: string, minLength: 2, maxLength: 2 }
+    BogOriginator:
+      type: object
+      additionalProperties: false
+      required: [fullName, customerReference, country, city]
+      description: |
+        Internal BOG reporting wire shape for remitter data (not accepted on payout create).
+        Provide `dateOfBirth` (individual) or `legalEntityId` (entity) when mapping to reports.
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        customerReference: { type: string, minLength: 1, maxLength: 64 }
+        country:
+          {
+            type: string,
+            minLength: 2,
+            maxLength: 2,
+            description: ISO-3166-1 alpha-2,
+          }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        address: { type: string, minLength: 1, maxLength: 500 }
+        dateOfBirth: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+        legalEntityId: { type: string, minLength: 1, maxLength: 120 }
+    BogTransaction:
+      type: object
+      additionalProperties: false
+      description: >
+        Stored transaction snapshot on a redemption (returned on POST create
+        when `sender` includes remittance fields). Not accepted on payout create.
+      properties:
+        transactionId: { type: string, minLength: 1, maxLength: 64 }
+        amount:
+          oneOf:
+            - { type: number }
+            - { type: string }
+        currency: { type: string, minLength: 1, maxLength: 16 }
+        purpose: { type: string, minLength: 1, maxLength: 200 }
+        transactionType: { type: string, minLength: 1, maxLength: 64 }
+        remittance: { type: string, minLength: 1, maxLength: 200 }
+        transactionTimestamp: { type: string, minLength: 1, maxLength: 64 }
+    BogBeneficiary:
+      type: object
+      additionalProperties: false
+      required: [fullName, customerReference, country]
+      description: |
+        BOG beneficiary snapshot captured from the linked Ghana beneficiary at payout create.
+        `country` is always `ghana`.
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        customerReference: { type: string, minLength: 1, maxLength: 64 }
+        country: { type: string, const: ghana }
     PayoutMetadata:
       type: object
       additionalProperties:
@@ -1377,7 +1647,7 @@ components:
     TghsPayoutRequest:
       type: object
       additionalProperties: false
-      required: [amount, beneficiaryId]
+      required: [amount, beneficiaryId, reference, idempotencyKey]
       properties:
         amount:
           type: number
@@ -1388,12 +1658,12 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: Optional merchant correlation id. Returned as `reference` on the redemption. Used as rail narration when set.
+          description: Merchant correlation id. Returned as `reference` on the redemption. Used as rail narration.
         idempotencyKey:
           type: string
           minLength: 8
           maxLength: 64
-          description: Optional retry key. The same merchant, environment, and key returns the existing payout or redemption instead of creating a duplicate.
+          description: Retry key. The same merchant, environment, and key returns the existing payout or redemption instead of creating a duplicate.
         sender:
           $ref: "#/components/schemas/PayoutSender"
         metadata:
@@ -1401,8 +1671,85 @@ components:
         simulateFailure:
           type: boolean
           description: Test only. Simulated burn still succeeds; Ghana payout fails (`payout_failed`). Balance is not restored after burn.
+    TghsPayoutReceipt:
+      type: object
+      description: >
+        Merchant payout receipt returned by GET list/detail and refresh.
+        Omits sender KYC, beneficiary snapshots, BOG report payloads, and
+        payout account numbers. Use `senderProvided` to confirm remitter data
+        was captured on create.
+      required:
+        - id
+        - environment
+        - network
+        - amount
+        - beneficiaryId
+        - reference
+        - senderProvided
+        - metadata
+        - status
+        - burnTxHash
+        - burnExplorerUrl
+        - failureReason
+        - burnConfirmedAt
+        - completedAt
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        environment: { type: string, enum: [test, live] }
+        network: { type: string, enum: [base, base-sepolia] }
+        amount: { $ref: "#/components/schemas/DecimalString" }
+        beneficiaryId: { type: string, format: uuid }
+        reference: { type: [string, "null"] }
+        senderProvided:
+          type: boolean
+          description: True when remitter KYC was stored on create (not echoed on GET).
+        metadata:
+          oneOf:
+            - { $ref: "#/components/schemas/PayoutMetadata" }
+            - { type: "null" }
+        beneficiaryLabel: { type: [string, "null"] }
+        paymentMode: { type: [string, "null"], enum: [momo, bank, null] }
+        status:
+          type: string
+          description: >
+            Payout lifecycle. `burn_submitted` and `burn_confirmed` appear in
+            Test only; in Live the burn never changes `status`, and a payout can
+            be `completed` before `burnTxHash` is set.
+          enum:
+            [
+              requested,
+              approved,
+              burn_submitted,
+              burn_confirmed,
+              burn_failed,
+              payout_pending,
+              payout_failed,
+              completed,
+              reissued,
+            ]
+        burnTxHash: { type: [string, "null"] }
+        burnExplorerUrl: { type: [string, "null"], format: uri }
+        failureReason: { type: [string, "null"] }
+        burnConfirmedAt:
+          {
+            oneOf:
+              [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }],
+          }
+        completedAt:
+          {
+            oneOf:
+              [{ $ref: "#/components/schemas/DateTime" }, { type: "null" }],
+          }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
     TghsPayoutRecord:
       type: object
+      description: >
+        Full payout record returned immediately after POST create (includes
+        sender/transaction when supplied). GET list/detail use `TghsPayoutReceipt`
+        instead and omit PII.
       required:
         - id
         - environment
@@ -1431,6 +1778,17 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/PayoutSender" }
             - { type: "null" }
+        transaction:
+          oneOf:
+            - { $ref: "#/components/schemas/BogTransaction" }
+            - { type: "null" }
+        beneficiary:
+          oneOf:
+            - { $ref: "#/components/schemas/BogBeneficiary" }
+            - { type: "null" }
+        bogReport:
+          type: [object, "null"]
+          description: Immutable BOG report snapshot after payout completes (`type=payout`).
         metadata:
           oneOf:
             - { $ref: "#/components/schemas/PayoutMetadata" }
@@ -1441,9 +1799,21 @@ components:
         status:
           type: string
           description: >
-            Create returns `approved` (burn queued). Worker advances to
-            `burn_submitted`, then confirmation and Ghana payout states.
-          enum: [requested, approved, burn_submitted, burn_confirmed, burn_failed, payout_pending, payout_failed, completed]
+            Create returns `approved`. Live: status tracks the Ghana payout
+            only (`approved` → `payout_pending` → `completed`); the burn may
+            confirm after `completed` and never changes `status`. Test also
+            shows `burn_submitted` and `burn_confirmed`.
+          enum:
+            [
+              requested,
+              approved,
+              burn_submitted,
+              burn_confirmed,
+              burn_failed,
+              payout_pending,
+              payout_failed,
+              completed,
+            ]
         burnTxHash: { type: [string, "null"] }
         burnExplorerUrl: { type: [string, "null"], format: uri }
         failureReason: { type: [string, "null"] }
@@ -1464,7 +1834,7 @@ components:
         - $ref: "#/components/schemas/SuccessBase"
         - type: object
           properties:
-            data: { $ref: "#/components/schemas/TghsPayoutRecord" }
+            data: { $ref: "#/components/schemas/TghsPayoutReceipt" }
     TghsPayoutRecordListResponse:
       allOf:
         - $ref: "#/components/schemas/SuccessBase"
@@ -1476,7 +1846,13 @@ components:
               properties:
                 redemptions:
                   type: array
-                  items: { $ref: "#/components/schemas/TghsPayoutRecord" }
+                  items: { $ref: "#/components/schemas/TghsPayoutReceipt" }
+    TghsPayoutCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/TghsPayoutRecord" }
     TghsPayoutResponse:
       allOf:
         - $ref: "#/components/schemas/SuccessBase"

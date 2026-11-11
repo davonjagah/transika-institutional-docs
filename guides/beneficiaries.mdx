@@ -62,8 +62,8 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/beneficiaries/resolve" \
 
 | Environment | What `resolve` returns |
 | --- | --- |
-| **Test** (`/v1/sandbox`, `txk_test_`) | Simulated holder name shaped like `TEST {networkCode} {last4}` so you can build UI and create flows without calling a live rail. |
-| **Live** (`/v1`, `txk_live_`) | The registered holder name from Transika’s Ghana payout rail for that network and account. Success only when the rail confirms the account. |
+| **Test** (`/v1/sandbox`, `txk_test_`) | When TPS is the active rail, Transika calls TPS name enquiry first and returns that holder name on success. If TPS fails, Hubtel simulates `TEST {networkCode} {last4}` (no Hubtel network call). |
+| **Live** (`/v1`, `txk_live_`) | TPS `POST /api/v1/resolve` first when TPS is the active rail, then Hubtel Verification if TPS fails. Success only when a rail confirms the account. |
 
 **Test** example response:
 
