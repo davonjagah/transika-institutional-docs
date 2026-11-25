@@ -29,6 +29,8 @@ tags:
     description: Period tGHS ledger statements with opening/closing balance and exports.
   - name: tGHS
     description: Managed GHS balances, activity, and Ghana beneficiary payouts.
+  - name: Ramp
+    description: On-ramp (preview, not available yet). Customers pay GHS and receive USDT or USDC.
   - name: Webhooks
     description: Merchant webhook endpoint administration.
 security:
@@ -870,6 +872,320 @@ paths:
                       completedAt: "2026-08-09T12:48:22.104Z"
                       createdAt: "2026-08-09T12:47:43.774Z"
                       updatedAt: "2026-08-09T12:48:22.110Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/rates:
+    get:
+      tags: [Ramp]
+      operationId: getRampRate
+      summary: Get an indicative on-ramp rate
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`. The rate is GHS per 1 unit of stablecoin, includes all spreads, and is not locked.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      parameters:
+        - name: pair
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/RampPair" }
+      responses:
+        "200":
+          description: Indicative rate, networks and limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampRateResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: No rate or collection account is available right now. Retry shortly.
+  /ramp/quotes:
+    post:
+      tags: [Ramp]
+      operationId: createRampQuote
+      summary: Create an on-ramp quote
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Send exactly one of `fiatAmount` or `cryptoAmount`. The rate is locked until `expiresAt`.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRampQuoteRequest"
+            example:
+              pair: GHS-USDT
+              network: tron
+              fiatAmount: "5000.00"
+      responses:
+        "201":
+          description: Quote created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampQuoteResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429":
+          description: Too many open quotes (`too_many_open_quotes`).
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: No rate or collection account is available right now. Retry shortly.
+  /ramp/quotes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Ramp]
+      operationId: getRampQuote
+      summary: Get an on-ramp quote
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      responses:
+        "200":
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampQuoteResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/quotes/{id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Ramp]
+      operationId: acceptRampQuote
+      summary: Accept an on-ramp quote
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Creates a transaction with payment instructions. The customer must pay before the quote's `expiresAt`; accepting does not restart the clock.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Repeating it for the same quote returns the original transaction. Using it for another quote returns `409`.
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9._:-]{8,128}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptRampQuoteRequest"
+            example:
+              walletAddress: CUSTOMER_TRON_WALLET_ADDRESS
+              sender:
+                fullName: Ama Mensah
+                idType: national_id
+                idNumber: GHA-000000000-0
+                country: GH
+              purpose: family_support
+              metadata:
+                orderId: "1042"
+      responses:
+        "201":
+          description: Quote accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: No rate or collection account is available right now. Retry shortly.
+  /ramp/transactions:
+    get:
+      tags: [Ramp]
+      operationId: listRampTransactions
+      summary: List on-ramp transactions
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`. Newest first.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RampTransactionStatus" }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Transactions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionListResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/transactions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Ramp]
+      operationId: getRampTransaction
+      summary: Get an on-ramp transaction
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      responses:
+        "200":
+          description: The transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/transactions/{id}/details:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    patch:
+      tags: [Ramp]
+      operationId: updateRampTransactionDetails
+      summary: Resubmit transaction details
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Only while `reviewStatus` is `info_required`. Sets it back to `pending`; an empty body resubmits without changes. Add documents first.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRampDetailsRequest"
+            example:
+              purpose: Payment for imported goods
+      responses:
+        "200":
+          description: Details resubmitted for review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/transactions/{id}/documents:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Ramp]
+      operationId: addRampTransactionDocument
+      summary: Add a supporting document
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. PDF, PNG, JPEG or WebP, up to 5 MB, at most 10 per transaction. Only while the review is `pending` or `info_required`.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+                type: { $ref: "#/components/schemas/RampDocumentType" }
+      responses:
+        "201":
+          description: Document added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/transactions/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Ramp]
+      operationId: cancelRampTransaction
+      summary: Cancel an on-ramp transaction
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Only while no payment has been received.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      responses:
+        "200":
+          description: Transaction cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampTransactionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /ramp/sandbox/transactions/{id}/simulate-payment:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Ramp]
+      operationId: simulateRampPayment
+      summary: Simulate a payment (Test only)
+      description: |
+        Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Test keys only. The full path is `/v1/sandbox/ramp/sandbox/transactions/{id}/simulate-payment`. An empty body pays the remaining amount in the sender's name. Read the transaction afterwards for its new status.
+
+        **Preview:** not available on the API yet; requests return `404` until release.
+      servers:
+        - url: https://institutional-api.tran-sika.com/v1/sandbox
+          description: Sandbox / Test path (`txk_test_` keys)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateRampPaymentRequest"
+      responses:
+        "200":
+          description: Payment simulated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RampSimulatedPaymentResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1865,6 +2181,220 @@ components:
                 activity: { $ref: "#/components/schemas/TghsActivity" }
                 balance: { $ref: "#/components/schemas/DecimalString" }
                 environment: { $ref: "#/components/schemas/Environment" }
+    RampPair:
+      type: string
+      enum: [GHS-USDT, GHS-USDC]
+    RampFiatAmount:
+      type: string
+      description: GHS decimal string, at most 2 decimal places.
+      pattern: '^\d+(\.\d{1,2})?$'
+      example: "5000.00"
+    RampCryptoAmount:
+      type: string
+      description: Stablecoin decimal string, at most 6 decimal places.
+      pattern: '^\d+(\.\d{1,6})?$'
+      example: "400.000000"
+    RampRateValue:
+      type: string
+      description: GHS per 1 unit of stablecoin, all spreads included. Example only.
+      example: "12.50000000"
+    RampTransactionStatus:
+      type: string
+      enum: [awaiting_payment, partially_paid, compliance_hold, funded, settling, settlement_failed, completed, expired, cancelled, refunded]
+    RampReviewStatus:
+      type: string
+      enum: [pending, info_required, approved, rejected]
+    RampDocumentType:
+      type: string
+      enum: [id_document, proof_of_address, source_of_funds, invoice, other]
+      default: other
+    RampParty:
+      type: object
+      additionalProperties: false
+      description: Either `fullName`, or both `firstName` and `lastName`, is required. `idType` and `idNumber` go together.
+      properties:
+        fullName: { type: string, maxLength: 200 }
+        firstName: { type: string, maxLength: 100 }
+        lastName: { type: string, maxLength: 100 }
+        idType: { type: string, enum: [passport, national_id, drivers_license, other] }
+        idNumber: { type: string, maxLength: 64 }
+        idCountry: { type: string, minLength: 2, maxLength: 2 }
+        nationality: { type: string, minLength: 2, maxLength: 2 }
+        dateOfBirth: { type: string, format: date }
+        country: { type: string, minLength: 2, maxLength: 2 }
+        addressLine1: { type: string, maxLength: 200 }
+        addressLine2: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 100 }
+        postalCode: { type: string, maxLength: 32 }
+        phone: { type: string, maxLength: 32 }
+        email: { type: string, format: email, maxLength: 200 }
+    RampRate:
+      type: object
+      properties:
+        pair: { $ref: "#/components/schemas/RampPair" }
+        asset: { type: string, enum: [USDT, USDC] }
+        rate: { $ref: "#/components/schemas/RampRateValue" }
+        networks: { type: array, items: { type: string } }
+        minFiat: { $ref: "#/components/schemas/RampFiatAmount" }
+        maxFiat: { $ref: "#/components/schemas/RampFiatAmount" }
+        quoteTtlSeconds: { type: integer, example: 2100 }
+        indicative: { type: boolean, const: true }
+        at: { $ref: "#/components/schemas/DateTime" }
+    CreateRampQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [pair, network]
+      description: Send exactly one of `fiatAmount` or `cryptoAmount`.
+      properties:
+        pair: { $ref: "#/components/schemas/RampPair" }
+        network: { type: string, description: "A network from `GET /ramp/rates`.", example: tron }
+        fiatAmount: { $ref: "#/components/schemas/RampFiatAmount" }
+        cryptoAmount: { $ref: "#/components/schemas/RampCryptoAmount" }
+    RampQuote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        pair: { $ref: "#/components/schemas/RampPair" }
+        asset: { type: string, enum: [USDT, USDC] }
+        network: { type: string, example: tron }
+        side: { type: string, const: buy }
+        fiatCurrency: { type: string, const: GHS }
+        fiatAmount: { $ref: "#/components/schemas/RampFiatAmount" }
+        cryptoAmount: { $ref: "#/components/schemas/RampCryptoAmount" }
+        rate: { $ref: "#/components/schemas/RampRateValue" }
+        status: { type: string, enum: [open, accepted, expired] }
+        expiresAt: { $ref: "#/components/schemas/DateTime" }
+        transactionId: { type: [string, "null"], format: uuid }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+    RampMetadata:
+      type: object
+      maxProperties: 20
+      additionalProperties: { type: string, maxLength: 500 }
+    AcceptRampQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [walletAddress, sender, purpose]
+      properties:
+        walletAddress: { type: string, minLength: 8, maxLength: 128, description: The customer's wallet on the quoted network. }
+        sender: { $ref: "#/components/schemas/RampParty" }
+        beneficiary:
+          description: Leave out when the sender is also the beneficiary.
+          allOf:
+            - $ref: "#/components/schemas/RampParty"
+        purpose: { type: string, minLength: 1, maxLength: 200 }
+        metadata: { $ref: "#/components/schemas/RampMetadata" }
+    UpdateRampDetailsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        sender: { $ref: "#/components/schemas/RampParty" }
+        beneficiary: { $ref: "#/components/schemas/RampParty" }
+        purpose: { type: string, minLength: 1, maxLength: 200 }
+    SimulateRampPaymentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { $ref: "#/components/schemas/RampFiatAmount" }
+        payerName: { type: string, minLength: 1, maxLength: 200 }
+    RampPaymentInstructions:
+      type: object
+      properties:
+        bankName: { type: string }
+        accountNumber: { type: string }
+        accountName: { type: string }
+        reference: { type: string, example: TXR-7K2M9QHD }
+        amount: { $ref: "#/components/schemas/RampFiatAmount" }
+        currency: { type: string, const: GHS }
+        payBy: { $ref: "#/components/schemas/DateTime" }
+    RampDocument:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/RampDocumentType" }
+        mime: { type: string, example: application/pdf }
+        size: { type: integer, description: Bytes. }
+        uploadedAt: { $ref: "#/components/schemas/DateTime" }
+    RampTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        quoteId: { type: string, format: uuid }
+        walletAddress: { type: string }
+        network: { type: string, example: tron }
+        asset: { type: string, enum: [USDT, USDC] }
+        status: { $ref: "#/components/schemas/RampTransactionStatus" }
+        fiatCurrency: { type: string, const: GHS }
+        fiatAmount: { $ref: "#/components/schemas/RampFiatAmount" }
+        fiatReceived: { $ref: "#/components/schemas/RampFiatAmount" }
+        cryptoAmount: { $ref: "#/components/schemas/RampCryptoAmount" }
+        rate: { $ref: "#/components/schemas/RampRateValue" }
+        expiresAt: { $ref: "#/components/schemas/DateTime" }
+        paymentInstructions: { $ref: "#/components/schemas/RampPaymentInstructions" }
+        reviewStatus: { $ref: "#/components/schemas/RampReviewStatus" }
+        reviewNote: { type: [string, "null"], description: "Set only when `reviewStatus` is `info_required` or `rejected`." }
+        settlementTxHash: { type: [string, "null"] }
+        refundReference: { type: [string, "null"] }
+        metadata:
+          type: [object, "null"]
+          additionalProperties: { type: string }
+        completedAt: { type: [string, "null"], format: date-time }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+        sender: { $ref: "#/components/schemas/RampParty" }
+        beneficiary: { $ref: "#/components/schemas/RampParty" }
+        purpose: { type: string }
+        documents: { type: array, items: { $ref: "#/components/schemas/RampDocument" } }
+    RampTransactionList:
+      type: object
+      properties:
+        transactions: { type: array, items: { $ref: "#/components/schemas/RampTransaction" } }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+    RampSimulatedPayment:
+      type: object
+      properties:
+        duplicate: { type: boolean }
+        payment:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            transactionId: { type: string, format: uuid }
+            amount: { $ref: "#/components/schemas/RampFiatAmount" }
+            payerName: { type: [string, "null"] }
+            matchStatus: { type: string, enum: [matched, unmatched, late] }
+            receivedAt: { $ref: "#/components/schemas/DateTime" }
+    RampRateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/RampRate" }
+    RampQuoteResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/RampQuote" }
+    RampTransactionResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/RampTransaction" }
+    RampTransactionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/RampTransactionList" }
+    RampSimulatedPaymentResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/RampSimulatedPayment" }
     CreateWebhookEndpointRequest:
       type: object
       additionalProperties: false

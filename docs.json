@@ -93,6 +93,22 @@
             ]
           },
           {
+            "group": "On-ramp (preview)",
+            "openapi": "openapi.yaml",
+            "pages": [
+              "GET /ramp/rates",
+              "POST /ramp/quotes",
+              "GET /ramp/quotes/{id}",
+              "POST /ramp/quotes/{id}/accept",
+              "GET /ramp/transactions",
+              "GET /ramp/transactions/{id}",
+              "PATCH /ramp/transactions/{id}/details",
+              "POST /ramp/transactions/{id}/documents",
+              "POST /ramp/transactions/{id}/cancel",
+              "POST /ramp/sandbox/transactions/{id}/simulate-payment"
+            ]
+          },
+          {
             "group": "Webhooks",
             "openapi": "openapi.yaml",
             "pages": [
