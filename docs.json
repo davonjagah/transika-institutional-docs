@@ -93,7 +93,7 @@
             ]
           },
           {
-            "group": "On-ramp (preview)",
+            "group": "On-ramp",
             "openapi": "openapi.yaml",
             "pages": [
               "GET /ramp/rates",

@@ -25,7 +25,7 @@ OTC desk activity runs in the Transika dashboard and is notified by email and in
 In Live, the Ghana payout can start before its burn is confirmed. `tghs.payout.completed` may therefore arrive with `burnTxHash` and `burnConfirmedAt` set to `null`. A `tghs.payout.burn_confirmed` event follows when the burn lands, carrying the same `status` (for example `completed`) with `burnTxHash` and `burnConfirmedAt` filled in. Treat `completed` as final; never move a payout's status because of `burn_confirmed`.
 </Note>
 
-On-ramp events (`ramp.transaction.*`) are listed in the [On-ramp guide](/guides/on-ramp#webhooks). The on-ramp is in preview and not available yet.
+On-ramp events (`ramp.transaction.*`) are listed in the [On-ramp guide](/guides/on-ramp#webhooks).
 
 Subscribe with `tghs.payout.*`, an exact event name, or `*`. An empty or omitted `events` array receives all events that are emitted to merchant HTTP webhooks. Test and Live use the **same event names and redemption-shaped `data.payout`**; create separate endpoints (or use environment) for each mode.
 

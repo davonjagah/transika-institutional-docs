@@ -6,10 +6,6 @@ keywords: ["on-ramp", "ramp", "USDT", "USDC", "GHS", "quote", "stablecoin", "set
 
 The on-ramp API lets your customers pay in Ghana cedis (GHS) and receive USDT or USDC in their own wallet. You request a firm quote, accept it with the customer's details, and show them where to pay. Transika reviews the transaction, matches the payment, and settles to the wallet.
 
-<Warning>
-**Preview.** The on-ramp is not available on the API yet, in Test or Live. Until it is released, `/ramp` requests return `404`. Use this page to plan your integration; details can change before release.
-</Warning>
-
 <Info>
 The on-ramp uses the `ramp` feature entitlement. Your merchant must have approved KYB/KYC, and API keys use `api:read` or `api:write`.
 </Info>

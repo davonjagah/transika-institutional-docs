@@ -30,7 +30,7 @@ tags:
   - name: tGHS
     description: Managed GHS balances, activity, and Ghana beneficiary payouts.
   - name: Ramp
-    description: On-ramp (preview, not available yet). Customers pay GHS and receive USDT or USDC.
+    description: On-ramp. Customers pay GHS and receive USDT or USDC.
   - name: Webhooks
     description: Merchant webhook endpoint administration.
 security:
@@ -886,8 +886,6 @@ paths:
       summary: Get an indicative on-ramp rate
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`. The rate is GHS per 1 unit of stablecoin, includes all spreads, and is not locked.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       parameters:
         - name: pair
           in: query
@@ -914,8 +912,6 @@ paths:
       summary: Create an on-ramp quote
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Send exactly one of `fiatAmount` or `cryptoAmount`. The rate is locked until `expiresAt`.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       requestBody:
         required: true
         content:
@@ -951,8 +947,6 @@ paths:
       summary: Get an on-ramp quote
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       responses:
         "200":
           description: The quote.
@@ -974,8 +968,6 @@ paths:
       summary: Accept an on-ramp quote
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Creates a transaction with payment instructions. The customer must pay before the quote's `expiresAt`; accepting does not restart the clock.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -1023,8 +1015,6 @@ paths:
       summary: List on-ramp transactions
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`. Newest first.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       parameters:
         - name: status
           in: query
@@ -1051,8 +1041,6 @@ paths:
       summary: Get an on-ramp transaction
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:read`.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       responses:
         "200":
           description: The transaction.
@@ -1074,8 +1062,6 @@ paths:
       summary: Resubmit transaction details
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Only while `reviewStatus` is `info_required`. Sets it back to `pending`; an empty body resubmits without changes. Add documents first.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       requestBody:
         required: true
         content:
@@ -1107,8 +1093,6 @@ paths:
       summary: Add a supporting document
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. PDF, PNG, JPEG or WebP, up to 5 MB, at most 10 per transaction. Only while the review is `pending` or `info_required`.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       requestBody:
         required: true
         content:
@@ -1144,8 +1128,6 @@ paths:
       summary: Cancel an on-ramp transaction
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Only while no payment has been received.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       responses:
         "200":
           description: Transaction cancelled.
@@ -1168,8 +1150,6 @@ paths:
       summary: Simulate a payment (Test only)
       description: |
         Requires approved KYB/KYC, active `ramp` entitlement, and `api:write`. Test keys only. The full path is `/v1/sandbox/ramp/sandbox/transactions/{id}/simulate-payment`. An empty body pays the remaining amount in the sender's name. Read the transaction afterwards for its new status.
-
-        **Preview:** not available on the API yet; requests return `404` until release.
       servers:
         - url: https://institutional-api.tran-sika.com/v1/sandbox
           description: Sandbox / Test path (`txk_test_` keys)
