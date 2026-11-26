@@ -4,7 +4,7 @@ description: "Sell USDT and USDC to your customers for Ghana cedis: quotes, paym
 keywords: ["on-ramp", "ramp", "USDT", "USDC", "GHS", "quote", "stablecoin", "settlement"]
 ---
 
-The on-ramp API lets your customers pay in Ghana cedis (GHS) and receive USDT or USDC in their own wallet. You request a firm quote, accept it with the customer's details, and show them where to pay. Transika reviews the transaction, matches the payment, and settles to the wallet.
+The on-ramp API lets your customers pay in Ghana cedis (GHS) and receive USDT or USDC in their own wallet. You request a firm quote, accept it with the customer's details, and show them where to pay. Each transaction gets its own bank account, so the payment is matched automatically. Transika reviews the transaction and settles to the wallet.
 
 <Info>
 The on-ramp uses the `ramp` feature entitlement. Your merchant must have approved KYB/KYC, and API keys use `api:read` or `api:write`.
@@ -20,16 +20,16 @@ The on-ramp uses the `ramp` feature entitlement. Your merchant must have approve
     Call `POST /v1/ramp/quotes` with either the GHS amount or the stablecoin amount. The rate is locked until `expiresAt`.
   </Step>
   <Step title="Accept the quote">
-    Call `POST /v1/ramp/quotes/{id}/accept` with the wallet address, sender and purpose. This creates a transaction with payment instructions.
+    Call `POST /v1/ramp/quotes/{id}/accept` with the transaction parties, the payment purpose and the settlement wallet. This creates a transaction with payment instructions.
   </Step>
   <Step title="Collect the payment">
-    Show your customer the bank details, the exact amount, and the payment reference. They must pay before `payBy`.
+    Show your customer the bank account and the exact amount. They can pay from any bank, and must pay before `payBy`.
   </Step>
   <Step title="Respond to the review">
     Transika reviews every transaction. If `reviewStatus` becomes `info_required`, correct the details or add documents.
   </Step>
   <Step title="Track settlement">
-    Listen for `ramp.transaction.*` webhooks, or poll the transaction, until `completed`. `settlementTxHash` is the on-chain proof.
+    Listen for `ramp.transaction.*` webhooks, or poll the transaction, until `completed`. `settlement.txHash` is the on-chain proof.
   </Step>
 </Steps>
 
@@ -40,7 +40,7 @@ The on-ramp uses the `ramp` feature entitlement. Your merchant must have approve
 | `GHS-USDT` | USDT | `tron`, `ethereum` |
 | `GHS-USDC` | USDC | `base`, `ethereum`, `polygon` |
 
-Networks and limits can change. Treat `GET /v1/ramp/rates` as authoritative.
+Networks and limits can change, and the minimum and maximum can differ between Test and Live. Treat `GET /v1/ramp/rates` as authoritative.
 
 ```bash
 curl "$TRANSIKA_API_URL/v1/sandbox/ramp/rates?pair=GHS-USDT" \
@@ -98,6 +98,8 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/quotes" \
     "rate": "12.50000000",
     "status": "open",
     "expiresAt": "2026-11-25T09:35:00.000Z",
+    "expiresInSeconds": 2100,
+    "serverTime": "2026-11-25T09:00:00.000Z",
     "transactionId": null,
     "createdAt": "2026-11-25T09:00:00.000Z"
   }
@@ -107,10 +109,23 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/quotes" \
 Quotes are `open`, `accepted` or `expired`. Amounts are decimal strings.
 
 <Note>
-The customer must accept **and pay** before the quote's `expiresAt`. Accepting does not restart the clock. No webhook is sent when a quote that was never accepted expires.
+The customer must accept **and pay** before the quote's `expiresAt`. Accepting does not restart the clock, so Transika refuses to accept a quote with less than 10 minutes left (`422 quote_expiring`). Create a new quote instead. A quote that expires without being accepted sends `ramp.quote.expired`.
 </Note>
 
+### Time left
+
+Quotes and transactions include `expiresInSeconds` and `serverTime`. `expiresInSeconds` is the time left on Transika's clock, so use it, or the difference between `expiresAt` and `serverTime`, for countdowns instead of your device's clock. It is `null` once a quote is no longer open or a transaction no longer takes payments. Webhooks carry `expiresAt` only.
+
 ## Accept a quote
+
+Accepting takes four separate pieces of information:
+
+- **Parties**: `customer`, `sender` and `beneficiary`, for identification and Travel Rule records. Each is an individual or a registered business.
+- **Payment**: what the payment is for.
+- **Settlement**: where the stablecoin is sent.
+- **Metadata** (optional): your own references.
+
+The parties don't decide the destination. The settlement wallet doesn't have to belong to the beneficiary, the customer or the sender.
 
 ```bash
 curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/quotes/$QUOTE_ID/accept" \
@@ -118,32 +133,69 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/quotes/$QUOTE_ID/accept" \
   -H "Idempotency-Key: order-1042-accept" \
   -H "Content-Type: application/json" \
   -d '{
-    "walletAddress": "CUSTOMER_TRON_WALLET_ADDRESS",
     "sender": {
-      "fullName": "Ama Mensah",
-      "idType": "national_id",
-      "idNumber": "GHA-000000000-0",
-      "country": "GH"
+      "type": "individual",
+      "details": {
+        "fullName": "Ama Mensah",
+        "idType": "national_id",
+        "idNumber": "GHA-000000000-0",
+        "country": "GH"
+      }
     },
-    "purpose": "family_support",
+    "beneficiary": {
+      "type": "business",
+      "details": {
+        "legalName": "Kente Traders Ltd",
+        "registrationNumber": "CS123456789",
+        "registrationCountry": "GH"
+      }
+    },
+    "payment": {
+      "purpose": "merchant_payment",
+      "description": "Invoice INV-1042"
+    },
+    "settlement": {
+      "asset": "USDT",
+      "network": "tron",
+      "walletAddress": "SETTLEMENT_TRON_WALLET_ADDRESS"
+    },
     "metadata": { "orderId": "1042" }
   }'
 ```
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| `walletAddress` | Yes | The customer's wallet **on the quoted network**. It is screened before acceptance and again before settlement. |
-| `sender` | Yes | The person paying. Only a name is required: `fullName`, or both `firstName` and `lastName`. |
-| `beneficiary` | No | The person receiving. Leave it out when it is the sender. Same fields as `sender`. |
-| `purpose` | Yes | Why the customer is buying (max 200 characters). |
+| `sender` | Yes | Who pays the GHS. The bank transfer should come from them. |
+| `customer` | No | Your end customer, on whose behalf the purchase is made. Leave it out when it is the sender. |
+| `beneficiary` | No | The ultimate recipient of the value, for example a merchant being paid. Leave it out when it is the customer. |
+| `payment.purpose` | Yes | One of the purpose codes below. |
+| `payment.description` | When `purpose` is `other` | Free text, at most 500 characters, for example an invoice number. |
+| `settlement.walletAddress` | Yes | The wallet **on the quoted network** that receives the stablecoin. It is screened before acceptance and again before settlement. |
+| `settlement.asset`, `settlement.network` | No | Optional checks. If sent, they must match the quote or the request is rejected with `settlement_mismatch`. |
 | `metadata` | No | String map, at most 20 keys of 500 characters each. |
 
-Optional `sender` and `beneficiary` fields: `idType` (`passport`, `national_id`, `drivers_license`, `other`) together with `idNumber`, `idCountry`, `nationality`, `dateOfBirth` (`YYYY-MM-DD`), `country`, `addressLine1`, `addressLine2`, `city`, `region`, `postalCode`, `phone`, `email`. Country fields are two-letter codes. Unknown fields are rejected.
+Defaults: a missing `customer` copies the `sender`, and a missing `beneficiary` copies the `customer`. So for someone buying for themselves, send only `sender`.
+
+### Parties
+
+Each party is `{ "type": "individual" | "business", "details": { ... } }`. Unknown fields are rejected. Country fields are two-letter codes.
+
+**Individual**: `fullName`, or both `firstName` and `lastName`, is required. Optional: `idType` (`passport`, `national_id`, `drivers_license`, `other`) together with `idNumber`, plus `idCountry`, `nationality` and `dateOfBirth` (`YYYY-MM-DD`).
+
+**Business**: `legalName` is required. Optional: `tradingName`, `businessType` (`sole_proprietorship`, `partnership`, `private_limited`, `public_limited`, `non_profit`, `government`, `other`), `registrationNumber`, `registrationCountry`, `incorporationDate` (`YYYY-MM-DD`), `taxId`, `website` and `contactName`.
+
+Both types also take `country`, `addressLine1`, `addressLine2`, `city`, `region`, `postalCode`, `phone` and `email`.
+
+Mix types freely: for example an individual sender paying for a business customer, with a different business as the beneficiary.
+
+### Payment purposes
+
+`merchant_payment`, `goods_purchase`, `services_payment`, `supplier_payment`, `payroll`, `family_support`, `education`, `medical`, `investment`, `savings`, `loan_repayment`, `personal_use`, `other`.
 
 `Idempotency-Key` is optional but recommended: 8–128 letters, digits, `.`, `_`, `:` or `-`. Repeating it for the same quote returns the original transaction. Using it for another quote returns `409`.
 
 <Warning>
-Check the wallet address and network with your customer. Stablecoin sent to the wrong address or network may not be recoverable.
+Check the settlement wallet address and network with your customer. Stablecoin sent to the wrong address or network may not be recoverable.
 </Warning>
 
 The response is a transaction:
@@ -155,46 +207,59 @@ The response is a transaction:
   "data": {
     "id": "7d0c8a52-1c1f-4b0e-8f55-6a2f1a3b9c20",
     "quoteId": "0b4c2f8e-6f0a-4b59-9a53-0a5a1d0f7c11",
-    "walletAddress": "CUSTOMER_TRON_WALLET_ADDRESS",
-    "network": "tron",
-    "asset": "USDT",
     "status": "awaiting_payment",
     "fiatCurrency": "GHS",
     "fiatAmount": "5000.00",
-    "fiatReceived": "0",
+    "fiatReceived": "0.00",
     "cryptoAmount": "400.000000",
     "rate": "12.50000000",
     "expiresAt": "2026-11-25T09:35:00.000Z",
+    "expiresInSeconds": 1980,
+    "serverTime": "2026-11-25T09:02:00.000Z",
     "paymentInstructions": {
-      "bankName": "Transika Sandbox Bank",
-      "accountNumber": "0000000000",
-      "accountName": "TRANSIKA RAMP SANDBOX",
+      "bankName": "OmniBSIC Bank Ghana",
+      "accountNumber": "VA123456789012",
+      "accountName": "Transika TXR-7K2M9QHD",
       "reference": "TXR-7K2M9QHD",
       "amount": "5000.00",
       "currency": "GHS",
-      "payBy": "2026-11-25T09:35:00.000Z"
+      "payBy": "2026-11-25T09:35:00.000Z",
+      "dedicatedAccount": true
     },
     "reviewStatus": "pending",
     "reviewNote": null,
-    "settlementTxHash": null,
+    "documentRequirements": [
+      {
+        "subject": "payment",
+        "anyOf": ["invoice", "contract", "purchase_order", "receipt"],
+        "satisfied": false,
+        "blocking": false
+      }
+    ],
+    "settlement": {
+      "asset": "USDT",
+      "network": "tron",
+      "walletAddress": "SETTLEMENT_TRON_WALLET_ADDRESS",
+      "txHash": null
+    },
     "refundReference": null,
     "metadata": { "orderId": "1042" },
     "completedAt": null,
     "createdAt": "2026-11-25T09:02:00.000Z",
     "updatedAt": "2026-11-25T09:02:00.000Z",
+    "customer": {
+      "type": "individual",
+      "details": { "fullName": "Ama Mensah", "idType": "national_id", "idNumber": "GHA-000000000-0", "country": "GH" }
+    },
     "sender": {
-      "fullName": "Ama Mensah",
-      "idType": "national_id",
-      "idNumber": "GHA-000000000-0",
-      "country": "GH"
+      "type": "individual",
+      "details": { "fullName": "Ama Mensah", "idType": "national_id", "idNumber": "GHA-000000000-0", "country": "GH" }
     },
     "beneficiary": {
-      "fullName": "Ama Mensah",
-      "idType": "national_id",
-      "idNumber": "GHA-000000000-0",
-      "country": "GH"
+      "type": "business",
+      "details": { "legalName": "Kente Traders Ltd", "registrationNumber": "CS123456789", "registrationCountry": "GH" }
     },
-    "purpose": "family_support",
+    "payment": { "purpose": "merchant_payment", "description": "Invoice INV-1042" },
     "documents": []
   }
 }
@@ -202,22 +267,39 @@ The response is a transaction:
 
 ## Collect the payment
 
-Show the customer everything in `paymentInstructions`. They should:
+Show the customer the bank, account number, account name and amount from `paymentInstructions`. They should:
 
-- Pay the exact `amount`, in GHS, before `payBy`.
-- Put `reference` in the payment narration. It identifies the payment.
-- Pay from an account in the **sender's name**. A different payer name puts the transaction on hold.
+- Pay the exact `amount`, in GHS, before `payBy`, by bank transfer from any bank in Ghana.
+- Pay from an account in the **sender's name** (the individual's full name or the business's legal name). A different payer name, when the bank reports one, puts the transaction on hold.
 
-Always use the instructions returned for that transaction. Do not store or reuse them.
+When `dedicatedAccount` is `true`, the account belongs to this transaction only: the payment is matched by the account, so the customer doesn't need the `reference`. The account stops taking payments once the transaction is paid, expires or is cancelled, and the customer's bank returns anything sent after that. When `dedicatedAccount` is `false`, the account is shared and the customer **must** put `reference` in the payment narration.
+
+Always use the instructions returned for that transaction. Do not store or reuse them: each account is opened for one transaction and closed afterwards.
 
 | What arrives | Result |
 | --- | --- |
 | The full amount | `funded` |
 | Less than the full amount | `partially_paid`; the customer can pay the rest before `payBy` |
-| More than the full amount | `funded`; the stablecoin amount does not increase, and Transika handles the excess as a refund |
-| A payment after the transaction has closed | `ramp.transaction.payment_after_close`; the money is due for refund and never settled at the old rate |
+| More than the full amount | Usually refused by the bank. If it is accepted, `funded`; the stablecoin amount does not increase, and Transika handles the excess as a refund |
+| A payment after the transaction has closed | Usually refused by the bank. If it is accepted, `ramp.transaction.payment_after_close`; the money is due for refund and never settled at the old rate |
 
-Further part-payments on a `partially_paid` transaction do not send a webhook. Poll `fiatReceived` for the running total.
+Further part-payments on a `partially_paid` transaction do not send a webhook. Poll `fiatReceived` for the running total, or list what arrived with `GET /v1/ramp/transactions/{id}/bank-entries`:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "dedicatedAccount": true,
+    "accountNumber": "VA123456789012",
+    "entries": [
+      { "id": "c1f0…", "amount": "3000.00", "currency": "GHS", "reference": "GIP000123456789", "at": "2026-11-25T09:20:11.000Z", "payerName": "Ama Mensah", "payerBank": "GCB Bank", "status": "APPROVED" },
+      { "id": "9a2e…", "amount": "2000.00", "currency": "GHS", "reference": "GIP000123450001", "at": "2026-11-25T09:08:40.000Z", "payerName": "Ama Mensah", "payerBank": "GCB Bank", "status": "APPROVED" }
+    ]
+  }
+}
+```
+
+`payerName` and `payerBank` are filled when the bank reports them.
 
 ## Transaction lifecycle
 
@@ -234,7 +316,7 @@ awaiting_payment → funded → settling → completed
 | `funded` | Payment received. Settles once the review is approved |
 | `settling` | Stablecoin is being sent |
 | `settlement_failed` | The send failed. Transika retries, holds, or refunds it |
-| `completed` | Stablecoin sent. See `settlementTxHash` |
+| `completed` | Stablecoin sent. See `settlement.txHash` |
 | `expired` | Not fully paid by `payBy`. Anything received is due for refund |
 | `cancelled` | Cancelled by you, or rejected in review before any payment |
 | `refunded` | GHS returned. See `refundReference` |
@@ -262,26 +344,49 @@ curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/transactions/$TRANSACTION_ID/can
 To answer an information request, add any documents **first**, then resubmit. Resubmitting sets `reviewStatus` back to `pending`; an empty body (`{}`) resubmits without changes.
 
 ```bash
-# PDF, PNG, JPEG or WebP, up to 5 MB, at most 10 per transaction
-curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/transactions/$TRANSACTION_ID/documents" \
-  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
-  -F "type=source_of_funds" \
-  -F "document=@statement.pdf"
-
 curl -X PATCH "$TRANSIKA_API_URL/v1/sandbox/ramp/transactions/$TRANSACTION_ID/details" \
   -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ "purpose": "Payment for imported goods" }'
+  -d '{ "payment": { "purpose": "goods_purchase", "description": "Imported fabric, INV-1042" } }'
 ```
 
-Document `type` is `id_document`, `proof_of_address`, `source_of_funds`, `invoice` or `other` (the default). Documents can be added while the review is `pending` or `info_required`. Details can change only while it is `info_required`.
+## Documents
+
+Upload supporting documents one file at a time after accepting. Each document has a `type` (what it is) and a `subject` (what it supports): the `customer`, `sender` or `beneficiary`, or the `payment`.
+
+```bash
+# PDF, PNG, JPEG or WebP, up to 5 MB, at most 10 per transaction
+curl -X POST "$TRANSIKA_API_URL/v1/sandbox/ramp/transactions/$TRANSACTION_ID/documents" \
+  -H "Authorization: Bearer $TRANSIKA_TEST_API_KEY" \
+  -F "type=invoice" \
+  -F "subject=payment" \
+  -F "document=@INV-1042.pdf"
+```
+
+| `type` | Allowed `subject` | Default `subject` |
+| --- | --- | --- |
+| `id_document`, `proof_of_address`, `business_registration` | `customer`, `sender`, `beneficiary` | `sender` |
+| `invoice`, `contract`, `purchase_order`, `receipt`, `proof_of_payment` | `payment` | `payment` |
+| `source_of_funds` | Any | `sender` |
+| `other` (default type) | Any | `payment` |
+
+A type sent with a subject it doesn't allow is rejected with `422 document_subject_mismatch`. Documents can be added while the review is `pending` or `info_required`.
+
+### Payment evidence
+
+Some purposes should come with evidence of what is being paid for: `merchant_payment`, `goods_purchase`, `services_payment` and `supplier_payment`. For these, the transaction's `documentRequirements` lists one entry for the `payment`. It becomes `satisfied` once any of `invoice`, `contract`, `purchase_order` or `receipt` is uploaded for the payment.
+
+`blocking` is `false`: a missing document doesn't stop acceptance or settlement. Upload it early anyway, because review usually asks for it with `info_required`. Other purposes return an empty `documentRequirements`.
+
+Details can change only while the review is `info_required`. `PATCH` takes any of `customer`, `sender`, `beneficiary` and `payment`, in the same shape as accepting. A party you don't send stays as it is, except that a `customer` or `beneficiary` that was a copy keeps following the party it copied. The settlement wallet can't be changed; cancel and create a new quote instead.
 
 ## Webhooks
 
-Subscribe with `ramp.transaction.*`. See [Webhooks](/guides/webhooks) for signatures and retries.
+Subscribe with `ramp.transaction.*` and `ramp.quote.*`. See [Webhooks](/guides/webhooks) for signatures and retries.
 
 | Event | When |
 | --- | --- |
+| `ramp.quote.expired` | A quote expired without being accepted |
 | `ramp.transaction.awaiting_payment` | Quote accepted |
 | `ramp.transaction.partially_paid` | First part-payment received |
 | `ramp.transaction.funded` | Paid, or released from hold |
@@ -297,7 +402,24 @@ Subscribe with `ramp.transaction.*`. See [Webhooks](/guides/webhooks) for signat
 | `ramp.transaction.payment_after_close` | Money arrived when it could no longer count as payment; refund due |
 | `ramp.transaction.refunded` | GHS returned |
 
-`data` is the transaction itself, without `sender`, `beneficiary`, `purpose` or `documents`. Fetch the transaction when you need those. Events can arrive out of order, so treat `GET /v1/ramp/transactions/{id}` as authoritative.
+For `ramp.transaction.*`, `data` is the transaction itself, without `customer`, `sender`, `beneficiary`, `payment` or `documents`, and without `expiresInSeconds` or `serverTime`. For `ramp.quote.expired`, `data` is the quote. Fetch the transaction when you need more. Events can arrive out of order, so treat `GET /v1/ramp/transactions/{id}` as authoritative.
+
+## Transaction history
+
+`GET /v1/ramp/transactions` takes these filters, and `GET /v1/ramp/transactions/export` takes the same ones and returns every match as CSV, newest first:
+
+| Parameter | Meaning |
+| --- | --- |
+| `status` | One transaction status |
+| `from`, `to` | Created between these days (UTC), `YYYY-MM-DD`, inclusive |
+| `q` | Part of the payment reference, or an exact transaction id, account number or wallet address |
+
+```bash
+curl "$TRANSIKA_API_URL/v1/ramp/transactions/export?from=2026-11-01&to=2026-11-30" \
+  -H "Authorization: Bearer $TRANSIKA_API_KEY" -o ramp-november.csv
+```
+
+The CSV has one row per transaction, with the amounts, rate, status, collection account, settlement wallet and hash, and a `payments` column listing each payment received as `amount@time`.
 
 ## Test in the sandbox
 
@@ -316,6 +438,8 @@ curl -X POST \
 - `amount` below the total, for `partially_paid`.
 - `payerName` that differs from the sender, for `compliance_hold`.
 
+In Test, each transaction's account is at a simulated bank that behaves like the real one. The payment arrives as a transfer from another bank and is matched the same way, and the bank refuses what it would refuse in Live. More than is still due, or a payment after the account stopped taking payments, returns `422 simulation_refused`. A closed account returns `409 collection_closed`.
+
 Then read the transaction for its new status. Review and settlement are done by Transika, in Test too, so ask your Transika contact to move a Test transaction to `completed`.
 
 ## Errors
@@ -330,6 +454,8 @@ Then read the transaction for its new status. Review and settlement are done by 
 | 422 | `invalid_amount` | The amount is malformed or too small |
 | 422 | `amount_out_of_range` | Outside the pair's minimum or maximum |
 | 422 | `quote_expired` | Create a new quote |
+| 422 | `quote_expiring` | Less than 10 minutes left on the quote for the customer to pay. Create a new quote |
+| 422 | `simulation_refused` | Test only: the simulated bank refused the payment |
 | 422 | `wallet_sanctioned` | The wallet failed screening |
 | 422 | `daily_limit_reached` | Your daily on-ramp limit is used up. Resets at 00:00 UTC |
 | 422 | `too_many_documents` | 10 documents already attached |
@@ -338,8 +464,10 @@ Then read the transaction for its new status. Review and settlement are done by 
 | 409 | `payment_received` | Cannot cancel after a payment |
 | 409 | `details_locked` | Details or documents cannot change now |
 | 409 | `invalid_transition` | Not possible in the current status |
+| 409 | `collection_closed` | Test only: the transaction's account is already closed |
 | 429 | `too_many_open_quotes` | Accept some quotes or let them expire |
 | 503 | `ramp_collection_unconfigured` | Payments cannot be collected right now |
+| 503 | `ramp_collection_unavailable` | The bank could not open an account just now. Retry shortly |
 
 A `503` can also mean no rate is available. Retry shortly.
 
@@ -352,10 +480,12 @@ A `503` can also mean no rate is available. Retry shortly.
 | `GET` | `/v1/ramp/quotes/{id}` | `api:read` |
 | `POST` | `/v1/ramp/quotes/{id}/accept` | `api:write` |
 | `GET` | `/v1/ramp/transactions` | `api:read` |
+| `GET` | `/v1/ramp/transactions/export` | `api:read` |
 | `GET` | `/v1/ramp/transactions/{id}` | `api:read` |
+| `GET` | `/v1/ramp/transactions/{id}/bank-entries` | `api:read` |
 | `PATCH` | `/v1/ramp/transactions/{id}/details` | `api:write` |
 | `POST` | `/v1/ramp/transactions/{id}/documents` | `api:write` |
 | `POST` | `/v1/ramp/transactions/{id}/cancel` | `api:write` |
 | `POST` | `/v1/ramp/sandbox/transactions/{id}/simulate-payment` | `api:write` (Test only) |
 
-Use `/v1/sandbox/ramp/*` with a Test API key. `GET /v1/ramp/transactions` accepts `status`, `page` and `limit` (max 100) and returns `transactions`, `total`, `page` and `limit`, newest first.
+Use `/v1/sandbox/ramp/*` with a Test API key. `GET /v1/ramp/transactions` accepts `status`, `from`, `to`, `q`, `page` and `limit` (max 100) and returns `transactions`, `total`, `page` and `limit`, newest first.
